@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import ServiceManagement
 
@@ -25,6 +26,12 @@ final class HelperManager {
 
     func openLoginItemsSettings() {
         SMAppService.openSystemSettingsLoginItems()
+        // Fallback: the SMAppService call silently no-ops for LSUIElement apps
+        // or when System Settings is already running in the background, so also
+        // open the Login Items pane by URL, which brings Settings to the front.
+        if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // MARK: XPC

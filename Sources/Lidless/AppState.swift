@@ -87,6 +87,13 @@ final class AppState: ObservableObject {
     }
 
     func installHelper() {
+        // If the daemon is already registered and just awaiting approval, don't
+        // re-register (that throws once pending and would swallow the open) —
+        // just take the user to Login Items.
+        if helper.requiresApproval {
+            openLoginItems()
+            return
+        }
         do {
             try helper.register()
             refreshHelperStatus()
@@ -99,6 +106,15 @@ final class AppState: ObservableObject {
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    /// Open System Settings ▸ Login Items so the user can approve the helper.
+    /// Kept separate from `installHelper()` so re-registration can never swallow
+    /// the open.
+    func openLoginItems() {
+        lastError = "Approve Lidless in System Settings ▸ Login Items."
+        helper.openLoginItemsSettings()
+        refreshHelperStatus()
     }
 
     // MARK: State
