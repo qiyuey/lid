@@ -9,8 +9,13 @@ struct LidlessApp: App {
             MenuContent()
                 .environmentObject(state)
         } label: {
-            Image(systemName: state.isEnabled ? "bolt.fill" : "bolt.slash.fill")
+            Image(state.isEnabled ? "MenubarLaptopActive" : "MenubarLaptop")
         }
         .menuBarExtraStyle(.window)
+
+        Settings {
+            SettingsView()
+                .environmentObject(state)
+        }
     }
 }
