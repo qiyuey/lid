@@ -74,4 +74,46 @@ final class SharedLogicTests: XCTestCase {
         let info = BatteryInfo(percent: 80, onAC: false)
         XCTAssertFalse(SafetyPolicy.shouldDisableForBattery(info, threshold: 20))
     }
+
+    // MARK: AutoOff
+
+    func testAutoOffDeadlineIsStartPlusMinutes() {
+        let start = Date(timeIntervalSince1970: 1000)
+        XCTAssertEqual(AutoOff.deadline(from: start, minutes: 30),
+                       Date(timeIntervalSince1970: 1000 + 1800))
+    }
+
+    func testAutoOffRemainingClampsToZero() {
+        let deadline = Date(timeIntervalSince1970: 1000)
+        let now = Date(timeIntervalSince1970: 1100) // already past
+        XCTAssertEqual(AutoOff.remaining(deadline: deadline, now: now), 0)
+    }
+
+    func testAutoOffRemainingCountsDown() {
+        let deadline = Date(timeIntervalSince1970: 1100)
+        let now = Date(timeIntervalSince1970: 1040)
+        XCTAssertEqual(AutoOff.remaining(deadline: deadline, now: now), 60)
+    }
+
+    func testAutoOffExpiry() {
+        let deadline = Date(timeIntervalSince1970: 1000)
+        XCTAssertTrue(AutoOff.isExpired(deadline: deadline, now: deadline))
+        XCTAssertTrue(AutoOff.isExpired(deadline: deadline, now: Date(timeIntervalSince1970: 1001)))
+        XCTAssertFalse(AutoOff.isExpired(deadline: deadline, now: Date(timeIntervalSince1970: 999)))
+    }
+
+    func testAutoOffCountdownFormatting() {
+        XCTAssertEqual(AutoOff.formatCountdown(30), "0:30")
+        XCTAssertEqual(AutoOff.formatCountdown(582), "9:42")
+        XCTAssertEqual(AutoOff.formatCountdown(3909), "1:05:09")
+        XCTAssertEqual(AutoOff.formatCountdown(0), "0:00")
+    }
+
+    func testAutoOffOptionLabels() {
+        XCTAssertEqual(AutoOff.optionLabel(minutes: 15), "15 min")
+        XCTAssertEqual(AutoOff.optionLabel(minutes: 30), "30 min")
+        XCTAssertEqual(AutoOff.optionLabel(minutes: 60), "1 hour")
+        XCTAssertEqual(AutoOff.optionLabel(minutes: 120), "2 hours")
+        XCTAssertEqual(AutoOff.optionLabel(minutes: 240), "4 hours")
+    }
 }

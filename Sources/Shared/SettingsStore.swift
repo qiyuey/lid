@@ -10,6 +10,7 @@ public struct SettingsStore {
         static let onlyCharging = "onlyWhileCharging"
         static let pauseThermal = "pauseOnHighThermal"
         static let seeded       = "settingsSeeded"
+        static let autoOff      = "autoOffMinutes"
     }
 
     public init(defaults: UserDefaults = .standard) {
@@ -30,5 +31,14 @@ public struct SettingsStore {
         defaults.set(settings.onlyWhileCharging, forKey: Key.onlyCharging)
         defaults.set(settings.pauseOnHighThermal, forKey: Key.pauseThermal)
         defaults.set(true, forKey: Key.seeded)
+    }
+
+    /// Auto-off duration in minutes (`0` = no auto-off). Defaults to 0.
+    public func loadAutoOffMinutes() -> Int {
+        defaults.integer(forKey: Key.autoOff)
+    }
+
+    public func saveAutoOffMinutes(_ minutes: Int) {
+        defaults.set(minutes, forKey: Key.autoOff)
     }
 }

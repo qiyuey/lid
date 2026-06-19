@@ -79,6 +79,31 @@ struct MenuContent: View {
                 Text("Low-battery cutoff: \(state.settings.lowBatteryThreshold)%").font(.caption)
             }
 
+            Divider()
+
+            Text("Auto-off timer").font(.caption.bold()).foregroundStyle(.secondary)
+
+            Picker(selection: Binding(
+                get: { state.autoOffMinutes },
+                set: { state.setAutoOffMinutes($0) }
+            )) {
+                Text("Never").tag(0)
+                ForEach(AutoOff.presetMinutes, id: \.self) { m in
+                    Text(AutoOff.optionLabel(minutes: m)).tag(m)
+                }
+            } label: {
+                Text("Turn off after").font(.caption)
+            }
+            .pickerStyle(.menu).font(.caption)
+
+            if state.isEnabled, !state.autoOffRemaining.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "timer").foregroundStyle(.secondary)
+                    Text("Turning off in \(state.autoOffRemaining)")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+
             if let err = state.lastError {
                 Text(err).font(.caption).foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)

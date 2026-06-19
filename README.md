@@ -11,6 +11,7 @@ so coding agents (Claude Code, Codex, etc.) keep working while you move around.
 - Privileged background **helper** (`SMAppService`) so toggling never asks for a password.
 - **Watchdog**: if the app crashes or is force-quit, the helper auto-restores normal sleep — the Mac can't get stuck awake.
 - **Safety guards**: pause when running hot, only-while-charging, and a low-battery cutoff.
+- **Auto-off timer**: optionally turn keep-awake off after 15 min – 4 hours, with a live countdown.
 - **Launch at login**, and a clean menu with battery/power status.
 
 ## How it works
