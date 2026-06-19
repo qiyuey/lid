@@ -55,7 +55,22 @@ struct SettingsView: View {
             }
 
             Section("About") {
-                LabeledContent("Version", value: "v\(state.appVersion)")
+                HStack(spacing: 12) {
+                    if let icon = NSApp.applicationIconImage {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .frame(width: 48, height: 48)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Lidless").font(.headline)
+                        Text("Version \(state.appVersion)")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Text("Created by Nghia Luong")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Link("View on GitHub", destination: repoURL)
             }
         }
