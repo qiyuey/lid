@@ -11,6 +11,7 @@ public struct SettingsStore {
         static let pauseThermal = "pauseOnHighThermal"
         static let seeded       = "settingsSeeded"
         static let autoOff      = "autoOffMinutes"
+        static let onboarded    = "onboardingComplete"
     }
 
     public init(defaults: UserDefaults = .standard) {
@@ -40,5 +41,14 @@ public struct SettingsStore {
 
     public func saveAutoOffMinutes(_ minutes: Int) {
         defaults.set(minutes, forKey: Key.autoOff)
+    }
+
+    /// Whether the user has been through first-run onboarding. Defaults to false.
+    public func loadOnboardingComplete() -> Bool {
+        defaults.bool(forKey: Key.onboarded)
+    }
+
+    public func saveOnboardingComplete(_ complete: Bool) {
+        defaults.set(complete, forKey: Key.onboarded)
     }
 }

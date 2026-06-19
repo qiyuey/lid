@@ -116,4 +116,21 @@ final class SharedLogicTests: XCTestCase {
         XCTAssertEqual(AutoOff.optionLabel(minutes: 120), "2 hours")
         XCTAssertEqual(AutoOff.optionLabel(minutes: 240), "4 hours")
     }
+
+    // MARK: SettingsStore onboarding flag
+
+    func testOnboardingDefaultsToIncomplete() {
+        let defaults = UserDefaults(suiteName: "lidless.test.onboarding.default")!
+        defaults.removePersistentDomain(forName: "lidless.test.onboarding.default")
+        let store = SettingsStore(defaults: defaults)
+        XCTAssertFalse(store.loadOnboardingComplete())
+    }
+
+    func testOnboardingCompletePersists() {
+        let defaults = UserDefaults(suiteName: "lidless.test.onboarding.persist")!
+        defaults.removePersistentDomain(forName: "lidless.test.onboarding.persist")
+        let store = SettingsStore(defaults: defaults)
+        store.saveOnboardingComplete(true)
+        XCTAssertTrue(SettingsStore(defaults: defaults).loadOnboardingComplete())
+    }
 }

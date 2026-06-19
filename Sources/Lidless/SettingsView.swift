@@ -15,6 +15,7 @@ struct SettingsView: View {
                     get: { state.launchAtLogin },
                     set: { state.setLaunchAtLogin($0) }
                 ))
+                Button("Show Setup Guide…") { state.showOnboarding() }
             }
 
             Section {
