@@ -30,11 +30,15 @@ final class AppState: ObservableObject {
     /// Human countdown (e.g. `1:05:09`) shown while a timer is active.
     @Published var autoOffRemaining = ""
 
+    /// Whether the user has finished first-run onboarding (persisted).
+    @Published var onboardingComplete = false
+
     private let helper = HelperManager()
     private let fallback = PowerManager()
     private let battery = BatteryMonitor()
     private let store = SettingsStore()
     private let loginItem = LoginItemManager()
+    private lazy var onboarding = OnboardingController(state: self)
 
     /// Marketing version shown in the menu.
     var appVersion: String {
@@ -47,6 +51,7 @@ final class AppState: ObservableObject {
     init() {
         settings = store.load()
         autoOffMinutes = store.loadAutoOffMinutes()
+        onboardingComplete = store.loadOnboardingComplete()
         launchAtLogin = loginItem.isEnabled
         refreshHelperStatus()
         refreshState()
@@ -54,6 +59,28 @@ final class AppState: ObservableObject {
         batteryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
+        // First launch: show onboarding once. Persist the flag now so closing it
+        // early won't re-nag on the next launch. Present on the next runloop tick
+        // so the app is fully up before we open a window.
+        if !onboardingComplete {
+            onboardingComplete = true
+            store.saveOnboardingComplete(true)
+            DispatchQueue.main.async { [weak self] in self?.showOnboarding() }
+        }
+    }
+
+    // MARK: Onboarding
+
+    /// Present the first-run setup window (also reachable from Settings).
+    func showOnboarding() {
+        onboarding.show()
+    }
+
+    /// Mark onboarding done, persist it, and close the window.
+    func completeOnboarding() {
+        onboardingComplete = true
+        store.saveOnboardingComplete(true)
+        onboarding.close()
     }
 
     // MARK: Settings
