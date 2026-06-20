@@ -113,12 +113,16 @@ hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING" -ov -format UDZO "$DMG
 
 echo "→ [7/7] sign + generate Sparkle appcast"
 GENERATE_APPCAST=$(sparkle_tool generate_appcast)
+# Start from a clean workspace each release. Every build of the same marketing
+# version ships to one stable "latest" DMG URL, so the feed must advertise only
+# the current build — keeping old entries would point several versions at the
+# same URL with mismatched signatures. Monotonicity is still guarded against the
+# committed docs/appcast.xml above, not this ephemeral dir.
+rm -rf "$UPDATES_DIR"
 mkdir -p "$UPDATES_DIR"
 cp "$DMG" "$UPDATES_DIR/"
-# Sign every archive in UPDATES_DIR with the keychain private key and (re)write
-# the appcast. --download-url-prefix points enclosures at the GitHub Release asset.
-# Note: only archives still present in UPDATES_DIR are kept in the feed; on a
-# fresh checkout this yields a latest-only feed, which Sparkle handles fine.
+# Sign the archive with the keychain private key and write a fresh appcast.
+# --download-url-prefix points the enclosure at the GitHub Release asset.
 "$GENERATE_APPCAST" --download-url-prefix "$DOWNLOAD_URL_PREFIX/" "$UPDATES_DIR"
 mkdir -p "$(dirname "$PAGES_APPCAST")"
 cp "$APPCAST" "$PAGES_APPCAST"
