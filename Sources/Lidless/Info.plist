@@ -29,7 +29,7 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Nghia Luong</string>
 	<key>SUFeedURL</key>
-	<string>https://nghialuong.github.io/Lidless/appcast.xml</string>
+	<string>https://raw.githubusercontent.com/nghialuong/Lidless/main/docs/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>pmOUhSI4qLDIbgndphAMYGc/oZJIk9Nw9KdEcmJBSOY=</string>
 	<key>SUEnableAutomaticChecks</key>

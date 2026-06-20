@@ -35,7 +35,7 @@ targets:
         CFBundleIconName: AppIcon
         LSMinimumSystemVersion: "13.0"
         NSHumanReadableCopyright: "© 2026 Nghia Luong"
-        SUFeedURL: https://nghialuong.github.io/Lidless/appcast.xml
+        SUFeedURL: https://raw.githubusercontent.com/nghialuong/Lidless/main/docs/appcast.xml
         SUPublicEDKey: pmOUhSI4qLDIbgndphAMYGc/oZJIk9Nw9KdEcmJBSOY=
         SUEnableAutomaticChecks: true
         SUScheduledCheckInterval: 86400
