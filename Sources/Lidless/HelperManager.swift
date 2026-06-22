@@ -31,6 +31,31 @@ final class HelperManager {
 
     func unregister() throws { try service.unregister() }
 
+    /// Rebuild the registration from scratch so launchd picks up the *current*
+    /// binary. After an app update the daemon's code signature changes and its
+    /// launchd job keeps a stale bundle/requirement reference, so launchd refuses
+    /// to start the new binary (EX_CONFIG / "could not find and/or execute
+    /// program"). A plain re-`register()` does *not* clear that — only a full
+    /// unregister (which boots the old job) followed by a fresh register does.
+    ///
+    /// `unregister` is asynchronous, so we register from its completion (a
+    /// register issued immediately after fails with the unregister still settling).
+    /// `completion` is delivered on the main queue with any registration error.
+    func reregister(completion: @escaping (Error?) -> Void) {
+        let svc = service
+        svc.unregister { _ in
+            // Give launchd/BTM a moment to drop the old job before re-adding it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                do {
+                    try svc.register()
+                    completion(nil)
+                } catch {
+                    completion(error)
+                }
+            }
+        }
+    }
+
     func openLoginItemsSettings() {
         SMAppService.openSystemSettingsLoginItems()
         // Fallback: the SMAppService call silently no-ops for LSUIElement apps
@@ -62,26 +87,52 @@ final class HelperManager {
     }
 
     func setKeepAwake(_ enabled: Bool, completion: @escaping (Bool, String?) -> Void) {
-        guard let r = remote({ completion(false, $0) }) else {
-            completion(false, "No helper connection")
-            return
-        }
-        r.setKeepAwake(enabled) { ok, err in
-            DispatchQueue.main.async { completion(ok, err) }
+        callWithTimeout(completion: completion) { proxy, done in
+            proxy.setKeepAwake(enabled) { ok, err in done(ok, err) }
         }
     }
 
     func getState(completion: @escaping (Bool) -> Void) {
-        guard let r = remote({ _ in completion(false) }) else {
-            completion(false)
-            return
-        }
-        r.getState { value in
-            DispatchQueue.main.async { completion(value) }
+        callWithTimeout(completion: { ok, _ in completion(ok) }) { proxy, done in
+            proxy.getState { value in done(value, nil) }
         }
     }
 
     func heartbeat() {
         remote({ _ in })?.heartbeat { _ in }
+    }
+
+    /// True if the daemon answers an XPC call, false if it can't be reached
+    /// (connection error or no reply within the timeout). Used to detect a
+    /// registered-but-unlaunchable helper after an app update.
+    func checkReachable(completion: @escaping (Bool) -> Void) {
+        callWithTimeout(timeout: 5, completion: { ok, _ in completion(ok) }) { proxy, done in
+            proxy.version { _ in done(true, nil) }
+        }
+    }
+
+    /// Run a single XPC call, guaranteeing `completion` fires exactly once on the
+    /// main queue. If the daemon never replies — e.g. it fails to launch after an
+    /// update, so neither the reply nor the connection's error handler ever fires
+    /// — a timeout reports failure instead of leaving the UI hung and silent.
+    private func callWithTimeout(timeout: TimeInterval = 6,
+                                 completion: @escaping (Bool, String?) -> Void,
+                                 _ body: (LidlessHelperProtocol, @escaping (Bool, String?) -> Void) -> Void) {
+        var finished = false
+        let finish: (Bool, String?) -> Void = { ok, err in
+            DispatchQueue.main.async {
+                guard !finished else { return }
+                finished = true
+                completion(ok, err)
+            }
+        }
+        guard let proxy = remote({ finish(false, $0) }) else {
+            finish(false, "No helper connection")
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+            finish(false, "The background helper isn’t responding.")
+        }
+        body(proxy) { ok, err in finish(ok, err) }
     }
 }

@@ -62,6 +62,7 @@ final class AppState: ObservableObject {
         onboardingComplete = store.loadOnboardingComplete()
         launchAtLogin = loginItem.isEnabled
         refreshHelperStatus()
+        refreshHelperRegistrationIfUpdated()
         helperWasUsable = usingHelper
         refreshState()
         refreshBattery()
@@ -161,6 +162,32 @@ final class AppState: ObservableObject {
         helperInstalled = helper.isEnabled
         helperNeedsApproval = helper.requiresApproval
         usingHelper = helperInstalled
+    }
+
+    /// The app's current build number (`CFBundleVersion`).
+    private var currentBuild: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+    }
+
+    private func storeCurrentHelperBuild() {
+        store.saveLastHelperBuild(currentBuild)
+    }
+
+    /// After an app update the helper binary is re-signed and its launchd job can
+    /// keep a stale launch record, so the daemon fails to start (EX_CONFIG) and
+    /// XPC calls hang — the toggle then silently does nothing. On the first launch
+    /// of a new build, probe the registered daemon; only if it's unreachable do we
+    /// rebuild its registration (which may require re-approval). Healthy updates
+    /// are left untouched, so they don't needlessly prompt for approval.
+    private func refreshHelperRegistrationIfUpdated() {
+        guard !currentBuild.isEmpty else { return }
+        guard store.loadLastHelperBuild() != currentBuild else { return }
+        storeCurrentHelperBuild()
+        guard helper.isEnabled else { return }
+        helper.checkReachable { [weak self] reachable in
+            guard let self, !reachable else { return }
+            self.repairHelper()
+        }
     }
 
     /// Re-read helper status; if it just became usable (the user approved it while
@@ -286,10 +313,11 @@ final class AppState: ObservableObject {
                     self.updateAutoOff(for: target)
                 } else {
                     // The helper can fail without a message (e.g. a dropped XPC
-                    // reply); don't let that turn into a silent no-op.
-                    let message = err ?? "The background helper didn't respond. Try again, or reinstall it from Settings."
+                    // reply, or the daemon failing to launch after an update);
+                    // surface it instead of letting the toggle silently no-op.
+                    let message = err ?? "The background helper didn’t respond."
                     self.lastError = message
-                    if userInitiated { self.presentFailureAlert(target: target, message: message) }
+                    if userInitiated { self.presentHelperFailureAlert(message: message) }
                     self.refreshState()
                 }
             }
@@ -314,10 +342,46 @@ final class AppState: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = target ? "Couldn't keep your Mac awake" : "Couldn't turn keep-awake off"
+        alert.messageText = target ? "Couldn’t keep your Mac awake" : "Couldn’t turn keep-awake off"
         alert.informativeText = message
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    /// The helper is registered but didn't respond — almost always a stale
+    /// registration after an app update (launchd refuses to launch the new
+    /// binary). Offer a one-click reinstall, which re-registers and refreshes
+    /// that record.
+    private func presentHelperFailureAlert(message: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Couldn’t keep your Mac awake"
+        alert.informativeText = "\(message)\n\nThis usually happens after an update. Reinstalling the background helper fixes it."
+        alert.addButton(withTitle: "Reinstall Helper…")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            repairHelper()
+        }
+    }
+
+    /// Re-register the privileged helper to refresh launchd's record, then report
+    /// the outcome. Used both automatically (after a detected app update) and from
+    /// the failure alert's "Reinstall Helper" action.
+    func repairHelper() {
+        helper.reregister { [weak self] error in
+            guard let self else { return }
+            self.refreshHelperStatus()
+            self.storeCurrentHelperBuild()
+            if let error {
+                self.lastError = error.localizedDescription
+            } else if self.helper.requiresApproval {
+                self.lastError = "Approve Lidless in System Settings ▸ Login Items, then try the switch again."
+                self.helper.openLoginItemsSettings()
+            } else {
+                self.lastError = "Background helper reinstalled — try the switch again."
+            }
+        }
     }
 
     // MARK: Heartbeat (keeps the helper watchdog satisfied)
