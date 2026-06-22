@@ -32,6 +32,16 @@ public enum SafetyReason: Equatable {
         case .lowBattery(let p):  return "Auto-paused: battery \(p)% on battery power."
         }
     }
+
+    /// Phrasing for when the user *tries to turn keep-awake on* but the policy
+    /// won't allow it (vs. `message`, which describes a background auto-pause).
+    public var blockedMessage: String {
+        switch self {
+        case .highThermal:        return "Your Mac is running hot, so keep-awake is paused. It'll be available again once the Mac cools down."
+        case .notCharging:        return "\u{201C}Only while charging\u{201D} is on, so connect your Mac to power to keep it awake."
+        case .lowBattery(let p):  return "Battery is at \(p)%. Charge above the low-battery cutoff to keep your Mac awake."
+        }
+    }
 }
 
 /// Pure safety decision. No side effects, fully unit-testable.

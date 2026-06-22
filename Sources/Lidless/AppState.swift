@@ -62,6 +62,7 @@ final class AppState: ObservableObject {
         onboardingComplete = store.loadOnboardingComplete()
         launchAtLogin = loginItem.isEnabled
         refreshHelperStatus()
+        refreshHelperRegistrationIfUpdated()
         helperWasUsable = usingHelper
         refreshState()
         refreshBattery()
@@ -163,6 +164,32 @@ final class AppState: ObservableObject {
         usingHelper = helperInstalled
     }
 
+    /// The app's current build number (`CFBundleVersion`).
+    private var currentBuild: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+    }
+
+    private func storeCurrentHelperBuild() {
+        store.saveLastHelperBuild(currentBuild)
+    }
+
+    /// After an app update the helper binary is re-signed and its launchd job can
+    /// keep a stale launch record, so the daemon fails to start (EX_CONFIG) and
+    /// XPC calls hang — the toggle then silently does nothing. On the first launch
+    /// of a new build, probe the registered daemon; only if it's unreachable do we
+    /// rebuild its registration (which may require re-approval). Healthy updates
+    /// are left untouched, so they don't needlessly prompt for approval.
+    private func refreshHelperRegistrationIfUpdated() {
+        guard !currentBuild.isEmpty else { return }
+        guard store.loadLastHelperBuild() != currentBuild else { return }
+        storeCurrentHelperBuild()
+        guard helper.isEnabled else { return }
+        helper.checkReachable { [weak self] reachable in
+            guard let self, !reachable else { return }
+            self.repairHelper()
+        }
+    }
+
     /// Re-read helper status; if it just became usable (the user approved it while
     /// the app was running), pick up its keep-awake state and prompt a restart so
     /// the app fully switches onto the privileged helper.
@@ -252,12 +279,16 @@ final class AppState: ObservableObject {
         }
     }
 
-    func toggle() { setEnabled(!isEnabled) }
+    /// User flipped the toggle: treat it as user-initiated so any failure or
+    /// refusal surfaces a visible alert (not just the easy-to-miss inline note).
+    func toggle() { setEnabled(!isEnabled, userInitiated: true) }
 
     /// Set keep-awake. `note` is shown to the user on a successful change
     /// (used when an auto-pause or the auto-off timer disables it); nil clears
-    /// any prior message.
-    func setEnabled(_ target: Bool, note: String? = nil) {
+    /// any prior message. When `userInitiated` is true (the user flipped the
+    /// toggle), a failure or policy refusal also pops a blocking alert so it
+    /// can't go unnoticed; background callers leave it false to stay quiet.
+    func setEnabled(_ target: Bool, note: String? = nil, userInitiated: Bool = false) {
         // Refuse to enable if it would immediately violate the safety policy.
         if target {
             let info = battery.read()
@@ -265,6 +296,9 @@ final class AppState: ObservableObject {
                                                              thermalSerious: thermalSerious(),
                                                              settings: settings) {
                 lastError = blocker.message
+                if userInitiated {
+                    presentFailureAlert(target: target, message: blocker.blockedMessage)
+                }
                 return
             }
         }
@@ -278,7 +312,12 @@ final class AppState: ObservableObject {
                     self.manageHeartbeat()
                     self.updateAutoOff(for: target)
                 } else {
-                    self.lastError = err
+                    // The helper can fail without a message (e.g. a dropped XPC
+                    // reply, or the daemon failing to launch after an update);
+                    // surface it instead of letting the toggle silently no-op.
+                    let message = err ?? "The background helper didn’t respond."
+                    self.lastError = message
+                    if userInitiated { self.presentHelperFailureAlert(message: message) }
                     self.refreshState()
                 }
             }
@@ -290,7 +329,57 @@ final class AppState: ObservableObject {
                 updateAutoOff(for: target)
             } catch {
                 lastError = error.localizedDescription
+                if userInitiated { presentFailureAlert(target: target, message: error.localizedDescription) }
                 isEnabled = fallback.isSleepDisabled()
+            }
+        }
+    }
+
+    /// Pop a blocking alert when a user-initiated toggle can't be applied, so the
+    /// reason is impossible to miss. The inline `lastError` note still persists in
+    /// the popover after the alert is dismissed.
+    private func presentFailureAlert(target: Bool, message: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = target ? "Couldn’t keep your Mac awake" : "Couldn’t turn keep-awake off"
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    /// The helper is registered but didn't respond — almost always a stale
+    /// registration after an app update (launchd refuses to launch the new
+    /// binary). Offer a one-click reinstall, which re-registers and refreshes
+    /// that record.
+    private func presentHelperFailureAlert(message: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Couldn’t keep your Mac awake"
+        alert.informativeText = "\(message)\n\nThis usually happens after an update. Reinstalling the background helper fixes it."
+        alert.addButton(withTitle: "Reinstall Helper…")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            repairHelper()
+        }
+    }
+
+    /// Re-register the privileged helper to refresh launchd's record, then report
+    /// the outcome. Used both automatically (after a detected app update) and from
+    /// the failure alert's "Reinstall Helper" action.
+    func repairHelper() {
+        helper.reregister { [weak self] error in
+            guard let self else { return }
+            self.refreshHelperStatus()
+            self.storeCurrentHelperBuild()
+            if let error {
+                self.lastError = error.localizedDescription
+            } else if self.helper.requiresApproval {
+                self.lastError = "Approve Lidless in System Settings ▸ Login Items, then try the switch again."
+                self.helper.openLoginItemsSettings()
+            } else {
+                self.lastError = "Background helper reinstalled — try the switch again."
             }
         }
     }

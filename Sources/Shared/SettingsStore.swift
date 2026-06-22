@@ -13,6 +13,7 @@ public struct SettingsStore {
         static let autoOff      = "autoOffMinutes"
         static let onboarded    = "onboardingComplete"
         static let resumeOnboarding = "resumeOnboarding"
+        static let helperBuild  = "lastRegisteredHelperBuild"
     }
 
     public init(defaults: UserDefaults = .standard) {
@@ -62,5 +63,17 @@ public struct SettingsStore {
 
     public func saveResumeOnboarding(_ resume: Bool) {
         defaults.set(resume, forKey: Key.resumeOnboarding)
+    }
+
+    /// The app build (`CFBundleVersion`) for which the privileged helper was last
+    /// (re-)registered. Used to refresh the launchd registration after an update,
+    /// so the daemon keeps launching with the new binary's requirement. Empty
+    /// until the first registration.
+    public func loadLastHelperBuild() -> String {
+        defaults.string(forKey: Key.helperBuild) ?? ""
+    }
+
+    public func saveLastHelperBuild(_ build: String) {
+        defaults.set(build, forKey: Key.helperBuild)
     }
 }
