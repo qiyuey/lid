@@ -252,12 +252,16 @@ final class AppState: ObservableObject {
         }
     }
 
-    func toggle() { setEnabled(!isEnabled) }
+    /// User flipped the toggle: treat it as user-initiated so any failure or
+    /// refusal surfaces a visible alert (not just the easy-to-miss inline note).
+    func toggle() { setEnabled(!isEnabled, userInitiated: true) }
 
     /// Set keep-awake. `note` is shown to the user on a successful change
     /// (used when an auto-pause or the auto-off timer disables it); nil clears
-    /// any prior message.
-    func setEnabled(_ target: Bool, note: String? = nil) {
+    /// any prior message. When `userInitiated` is true (the user flipped the
+    /// toggle), a failure or policy refusal also pops a blocking alert so it
+    /// can't go unnoticed; background callers leave it false to stay quiet.
+    func setEnabled(_ target: Bool, note: String? = nil, userInitiated: Bool = false) {
         // Refuse to enable if it would immediately violate the safety policy.
         if target {
             let info = battery.read()
@@ -265,6 +269,9 @@ final class AppState: ObservableObject {
                                                              thermalSerious: thermalSerious(),
                                                              settings: settings) {
                 lastError = blocker.message
+                if userInitiated {
+                    presentFailureAlert(target: target, message: blocker.blockedMessage)
+                }
                 return
             }
         }
@@ -278,7 +285,11 @@ final class AppState: ObservableObject {
                     self.manageHeartbeat()
                     self.updateAutoOff(for: target)
                 } else {
-                    self.lastError = err
+                    // The helper can fail without a message (e.g. a dropped XPC
+                    // reply); don't let that turn into a silent no-op.
+                    let message = err ?? "The background helper didn't respond. Try again, or reinstall it from Settings."
+                    self.lastError = message
+                    if userInitiated { self.presentFailureAlert(target: target, message: message) }
                     self.refreshState()
                 }
             }
@@ -290,9 +301,23 @@ final class AppState: ObservableObject {
                 updateAutoOff(for: target)
             } catch {
                 lastError = error.localizedDescription
+                if userInitiated { presentFailureAlert(target: target, message: error.localizedDescription) }
                 isEnabled = fallback.isSleepDisabled()
             }
         }
+    }
+
+    /// Pop a blocking alert when a user-initiated toggle can't be applied, so the
+    /// reason is impossible to miss. The inline `lastError` note still persists in
+    /// the popover after the alert is dismissed.
+    private func presentFailureAlert(target: Bool, message: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = target ? "Couldn't keep your Mac awake" : "Couldn't turn keep-awake off"
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     // MARK: Heartbeat (keeps the helper watchdog satisfied)
