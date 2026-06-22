@@ -100,6 +100,13 @@ targets:
         # products so Xcode writes no ApplicationProperties — which makes
         # `xcodebuild -exportArchive` reject every distribution method.
         SKIP_INSTALL: YES
+        # Embed an Info.plist (with CFBundleIdentifier) into the tool binary.
+        # SMAppService daemons need this code identity to form the launch
+        # constraint (LWCR) that ties the daemon to the app; without it macOS
+        # refuses to exec the daemon ("could not find and/or execute program"
+        # / copy_bundle_path error) and the helper never launches.
+        GENERATE_INFOPLIST_FILE: YES
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
       configs:
         # Helper bundle id tracks the app's (`<app id>.helper`) per build config.
         Debug:
