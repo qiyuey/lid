@@ -1,5 +1,7 @@
 # Lidless
 
+[![Downloads](https://img.shields.io/github/downloads/nghialuong/Lidless/total)](https://github.com/nghialuong/Lidless/releases)
+
 A tiny macOS menu-bar app that keeps your Mac running **even with the lid closed** —
 so coding agents (Claude Code, Codex, etc.) keep working while you move around.
 
