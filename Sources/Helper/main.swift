@@ -8,7 +8,16 @@ let env = ProcessInfo.processInfo.environment
 let machLabel = env[LidHelperIdentity.machLabelEnvKey] ?? LidHelperIdentity.fallbackLabel
 let appBundleID = env[LidHelperIdentity.allowedClientBundleIDEnvKey] ?? LidHelperIdentity.appBundleID(helperLabel: machLabel)
 let teamID = env[LidHelperIdentity.allowedTeamIDEnvKey] ?? LidHelperIdentity.defaultTeamIdentifier
-let clientRequirement = LidHelperIdentity.clientCodeSigningRequirement(appBundleID: appBundleID, teamID: teamID)
+let certificateCommonName = env[LidHelperIdentity.allowedClientCertificateCommonNameEnvKey].flatMap { value in
+    value.isEmpty ? nil : value
+}
+let certificateSHA1 = env[LidHelperIdentity.allowedClientCertificateSHA1EnvKey].flatMap { value in
+    value.isEmpty ? nil : value
+}
+let clientRequirement = LidHelperIdentity.clientCodeSigningRequirement(appBundleID: appBundleID,
+                                                                       teamID: teamID,
+                                                                       certificateCommonName: certificateCommonName,
+                                                                       certificateSHA1: certificateSHA1)
 
 let delegate = HelperListenerDelegate(clientRequirement: clientRequirement)
 let listener = NSXPCListener(machServiceName: machLabel)

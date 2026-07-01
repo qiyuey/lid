@@ -19,6 +19,8 @@ public enum LidHelperIdentity {
 
     public static let allowedClientBundleIDEnvKey = "LID_ALLOWED_CLIENT_BUNDLE_ID"
     public static let allowedTeamIDEnvKey = "LID_ALLOWED_TEAM_ID"
+    public static let allowedClientCertificateCommonNameEnvKey = "LID_ALLOWED_CLIENT_CERTIFICATE_CN"
+    public static let allowedClientCertificateSHA1EnvKey = "LID_ALLOWED_CLIENT_CERTIFICATE_SHA1"
     public static let appVersionEnvKey = "LID_APP_VERSION"
     public static let appBuildEnvKey = "LID_APP_BUILD"
     public static let defaultTeamIdentifier = "7T4ZKYBB6Z"
@@ -28,8 +30,23 @@ public enum LidHelperIdentity {
         helperLabel.hasSuffix(".helper") ? String(helperLabel.dropLast(".helper".count)) : "top.qiyuey.lid"
     }
 
-    public static func clientCodeSigningRequirement(appBundleID: String, teamID: String) -> String {
-        "identifier \"\(requirementLiteral(appBundleID))\" and anchor apple generic and certificate leaf[subject.OU] = \"\(requirementLiteral(teamID))\""
+    public static func clientCodeSigningRequirement(appBundleID: String,
+                                                    teamID: String,
+                                                    certificateCommonName: String? = nil,
+                                                    certificateSHA1: String? = nil) -> String {
+        let identifier = "identifier \"\(requirementLiteral(appBundleID))\""
+        let appleSigned = "\(identifier) and anchor apple generic and certificate leaf[subject.OU] = \"\(requirementLiteral(teamID))\""
+        var allowedRequirements = [appleSigned]
+
+        if let certificateSHA1, !certificateSHA1.isEmpty {
+            allowedRequirements.append("\(identifier) and certificate leaf = H\"\(certificateHashLiteral(certificateSHA1))\"")
+        } else if let certificateCommonName, !certificateCommonName.isEmpty {
+            allowedRequirements.append("\(identifier) and certificate leaf[subject.CN] = \"\(requirementLiteral(certificateCommonName))\"")
+        }
+
+        return allowedRequirements.count == 1
+            ? appleSigned
+            : allowedRequirements.map { "(\($0))" }.joined(separator: " or ")
     }
 
     public static func versionString(bundle: Bundle,
@@ -47,6 +64,16 @@ public enum LidHelperIdentity {
         value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private static func certificateHashLiteral(_ value: String) -> String {
+        let hash = value
+            .filter { !$0.isWhitespace && $0 != ":" }
+            .uppercased()
+        let hexDigits = Set("0123456789ABCDEF")
+        precondition(hash.count == 40 && hash.allSatisfy { hexDigits.contains($0) },
+                     "certificate SHA-1 must contain 40 hex digits")
+        return hash
     }
 }
 

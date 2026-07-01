@@ -5,7 +5,7 @@ final class HelperLifecycleControllerTests: XCTestCase {
     func testRefreshRegistrationStoresVersionAfterReachableCheck() {
         let store = makeStore()
         let helper = FakeHelper(isEnabled: true, reachable: true)
-        let lifecycle = HelperLifecycleController(helper: helper, store: store)
+        let lifecycle = makeLifecycle(helper: helper, store: store)
 
         var repairRequested = false
         lifecycle.refreshRegistrationIfNeeded {
@@ -19,7 +19,7 @@ final class HelperLifecycleControllerTests: XCTestCase {
     func testRefreshRegistrationRequestsRepairWithoutStoringWhenUnreachable() {
         let store = makeStore()
         let helper = FakeHelper(isEnabled: true, reachable: false)
-        let lifecycle = HelperLifecycleController(helper: helper, store: store)
+        let lifecycle = makeLifecycle(helper: helper, store: store)
 
         var repairRequested = false
         lifecycle.refreshRegistrationIfNeeded {
@@ -33,7 +33,7 @@ final class HelperLifecycleControllerTests: XCTestCase {
     func testRefreshRegistrationDoesNotStoreWhenHelperIsNotEnabled() {
         let store = makeStore()
         let helper = FakeHelper(isEnabled: false, reachable: true)
-        let lifecycle = HelperLifecycleController(helper: helper, store: store)
+        let lifecycle = makeLifecycle(helper: helper, store: store)
 
         lifecycle.refreshRegistrationIfNeeded {
             XCTFail("Repair should not be requested for an unregistered helper.")
@@ -45,7 +45,7 @@ final class HelperLifecycleControllerTests: XCTestCase {
     func testRegisterStoresVersionWhenImmediatelyUsable() throws {
         let store = makeStore()
         let helper = FakeHelper(isEnabled: false)
-        let lifecycle = HelperLifecycleController(helper: helper, store: store)
+        let lifecycle = makeLifecycle(helper: helper, store: store)
 
         let becameUsable = try lifecycle.register()
 
@@ -56,7 +56,7 @@ final class HelperLifecycleControllerTests: XCTestCase {
     func testRecheckStoresVersionWhenHelperBecomesUsable() {
         let store = makeStore()
         let helper = FakeHelper(isEnabled: false)
-        let lifecycle = HelperLifecycleController(helper: helper, store: store)
+        let lifecycle = makeLifecycle(helper: helper, store: store)
 
         lifecycle.captureUsableBaseline()
         helper.isEnabled = true
@@ -68,7 +68,7 @@ final class HelperLifecycleControllerTests: XCTestCase {
     func testRepairStoresVersionOnlyAfterSuccessfulUsableRegistration() {
         let store = makeStore()
         let helper = FakeHelper(isEnabled: false)
-        let lifecycle = HelperLifecycleController(helper: helper, store: store)
+        let lifecycle = makeLifecycle(helper: helper, store: store)
 
         var errorMessage: String?
         lifecycle.repair { errorMessage = $0 }
@@ -80,7 +80,7 @@ final class HelperLifecycleControllerTests: XCTestCase {
     func testRepairFailureDoesNotStoreVersion() {
         let store = makeStore()
         let helper = FakeHelper(isEnabled: true, reregisterError: "Registration failed")
-        let lifecycle = HelperLifecycleController(helper: helper, store: store)
+        let lifecycle = makeLifecycle(helper: helper, store: store)
 
         var errorMessage: String?
         lifecycle.repair { errorMessage = $0 }
@@ -93,7 +93,7 @@ final class HelperLifecycleControllerTests: XCTestCase {
         let store = makeStore()
         store.saveLastHelperVersion(expectedHelperVersion)
         let helper = FakeHelper(isEnabled: true)
-        let lifecycle = HelperLifecycleController(helper: helper, store: store)
+        let lifecycle = makeLifecycle(helper: helper, store: store)
 
         var errorMessage: String?
         lifecycle.unregister { errorMessage = $0 }
@@ -102,8 +102,26 @@ final class HelperLifecycleControllerTests: XCTestCase {
         XCTAssertEqual(store.loadLastHelperVersion(), "")
     }
 
+    func testRefreshRegistrationRechecksWhenFingerprintChanges() {
+        let store = makeStore()
+        store.saveLastHelperVersion("helper-1|version-old|build-old|cert-old")
+        let helper = FakeHelper(isEnabled: true, reachable: true)
+        let lifecycle = makeLifecycle(helper: helper, store: store)
+
+        lifecycle.refreshRegistrationIfNeeded {
+            XCTFail("Reachable helper should update the stored fingerprint without repair.")
+        }
+
+        XCTAssertEqual(helper.checkReachableCalls, 1)
+        XCTAssertEqual(store.loadLastHelperVersion(), expectedHelperVersion)
+    }
+
     private var expectedHelperVersion: String {
-        "helper-\(LidHelperIdentity.helperVersion)"
+        "helper-\(LidHelperIdentity.helperVersion)|version-test|build-test|cert-test"
+    }
+
+    private func makeLifecycle(helper: FakeHelper, store: SettingsStore) -> HelperLifecycleController {
+        HelperLifecycleController(helper: helper, store: store) { self.expectedHelperVersion }
     }
 
     private func makeStore(function: StaticString = #function) -> SettingsStore {
@@ -120,6 +138,7 @@ private final class FakeHelper: HelperManaging {
     var requiresApproval: Bool
     var reachable: Bool
     var reregisterError: String?
+    var checkReachableCalls = 0
 
     init(isEnabled: Bool,
          requiresApproval: Bool = false,
@@ -153,6 +172,7 @@ private final class FakeHelper: HelperManaging {
     }
 
     func checkReachable(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        checkReachableCalls += 1
         completion(reachable)
     }
 }
