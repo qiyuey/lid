@@ -21,9 +21,10 @@ final class HelperListenerDelegate: NSObject, NSXPCListenerDelegate {
 /// The actual privileged work. Runs as root, so it can call `pmset` directly
 /// with no admin prompt. Guards against a stuck-awake state with a watchdog.
 final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.qiyuey.lid.helper.state")
+    private let queue = DispatchQueue(label: "top.qiyuey.lid.helper.state")
     private var lastHeartbeat = Date()
     private var keepAwake = false
+    private var watchdogEnabled = true
     private let watchdogTimeout: TimeInterval = 90
     private var watchdogTimer: DispatchSourceTimer?
 
@@ -42,6 +43,16 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
                 self.lastHeartbeat = Date()
             }
             reply(result.ok, result.error)
+        }
+    }
+
+    func setWatchdogEnabled(_ enabled: Bool, withReply reply: @escaping @Sendable (Bool, String?) -> Void) {
+        queue.async {
+            self.watchdogEnabled = enabled
+            if enabled {
+                self.lastHeartbeat = Date()
+            }
+            reply(true, nil)
         }
     }
 
@@ -67,7 +78,7 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + 30, repeating: 30)
         timer.setEventHandler { [weak self] in
-            guard let self = self, self.keepAwake else { return }
+            guard let self = self, self.keepAwake, self.watchdogEnabled else { return }
             if Watchdog.shouldAutoRestore(lastHeartbeat: self.lastHeartbeat,
                                           now: Date(),
                                           timeout: self.watchdogTimeout) {

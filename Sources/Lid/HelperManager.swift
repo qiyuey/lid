@@ -7,11 +7,16 @@ import ServiceManagement
 @MainActor
 final class HelperManager {
     private var connection: NSXPCConnection?
+    private enum Timing {
+        static let reregisterSettleDelay: UInt64 = 500_000_000
+        static let defaultXPCTimeout: TimeInterval = 6
+        static let reachabilityTimeout: TimeInterval = 5
+    }
 
     /// Helper label / Mach service name, derived from this app's bundle id so the
     /// `.dev` build talks to its own daemon and never the Release one.
     private var helperLabel: String {
-        LidHelperIdentity.label(appBundleID: Bundle.main.bundleIdentifier ?? "com.qiyuey.lid")
+        LidHelperIdentity.label(appBundleID: Bundle.main.bundleIdentifier ?? "top.qiyuey.lid")
     }
 
     /// The generated LaunchDaemon plist embedded at `Contents/Library/LaunchDaemons`.
@@ -44,12 +49,10 @@ final class HelperManager {
         }
     }
 
-    /// Rebuild the registration from scratch so launchd picks up the *current*
-    /// binary. After an app update the daemon's code signature changes and its
-    /// launchd job keeps a stale bundle/requirement reference, so launchd refuses
-    /// to start the new binary (EX_CONFIG / "could not find and/or execute
-    /// program"). A plain re-`register()` does *not* clear that — only a full
-    /// unregister (which boots the old job) followed by a fresh register does.
+    /// Rebuild the registration from scratch so launchd picks up the current
+    /// helper binary and launch constraints. A plain re-`register()` does not
+    /// reliably clear stale records — only a full unregister followed by a fresh
+    /// register does.
     ///
     /// `unregister` is asynchronous, so we register from its completion (a
     /// register issued immediately after fails with the unregister still settling).
@@ -65,7 +68,7 @@ final class HelperManager {
                     completion(nil)
                     return
                 }
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                try? await Task.sleep(nanoseconds: Timing.reregisterSettleDelay)
                 do {
                     try self.service.register()
                     completion(nil)
@@ -102,16 +105,24 @@ final class HelperManager {
     }
 
     private func remote(_ onError: @escaping @MainActor @Sendable (String) -> Void) -> LidHelperProtocol? {
-        let proxy = connect().remoteObjectProxyWithErrorHandler { error in
+        let errorHandler: @Sendable (Error) -> Void = { error in
             let message = error.localizedDescription
             Task { @MainActor in onError(message) }
         }
+        let proxy = connect().remoteObjectProxyWithErrorHandler(errorHandler)
         return proxy as? LidHelperProtocol
     }
 
     func setKeepAwake(_ enabled: Bool, completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
         callWithTimeout(completion: completion) { proxy, done in
             proxy.setKeepAwake(enabled) { ok, err in done(ok, err) }
+        }
+    }
+
+    func setWatchdogEnabled(_ enabled: Bool,
+                            completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
+        callWithTimeout(completion: completion) { proxy, done in
+            proxy.setWatchdogEnabled(enabled) { ok, err in done(ok, err) }
         }
     }
 
@@ -125,22 +136,22 @@ final class HelperManager {
         remote({ _ in })?.heartbeat { _ in }
     }
 
-    /// True if the daemon answers with the current protocol version, false if it
+    /// True if the daemon answers with the current helper version, false if it
     /// can't be reached (connection error / timeout) or is an older helper.
-    /// Used to detect registered-but-unlaunchable or stale helpers after updates.
+    /// Used to detect registered-but-unlaunchable or stale helpers.
     func checkReachable(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
-        callWithTimeout(timeout: 5, completion: { ok, _ in completion(ok) }) { proxy, done in
+        callWithTimeout(timeout: Timing.reachabilityTimeout, completion: { ok, _ in completion(ok) }) { proxy, done in
             proxy.version { version in
-                done(version.hasPrefix("protocol-\(LidHelperIdentity.protocolVersion) "), nil)
+                done(version.hasPrefix("helper-\(LidHelperIdentity.helperVersion) "), nil)
             }
         }
     }
 
     /// Run a single XPC call, guaranteeing `completion` fires exactly once on the
     /// main queue. If the daemon never replies — e.g. it fails to launch after an
-    /// update, so neither the reply nor the connection's error handler ever fires
+    /// repair, so neither the reply nor the connection's error handler ever fires
     /// — a timeout reports failure instead of leaving the UI hung and silent.
-    private func callWithTimeout(timeout: TimeInterval = 6,
+    private func callWithTimeout(timeout: TimeInterval = Timing.defaultXPCTimeout,
                                  completion: @escaping @MainActor @Sendable (Bool, String?) -> Void,
                                  _ body: (LidHelperProtocol, @escaping @Sendable (Bool, String?) -> Void) -> Void) {
         let gate = CompletionGate()
@@ -160,6 +171,8 @@ final class HelperManager {
         body(proxy) { ok, err in finish(ok, err) }
     }
 }
+
+extension HelperManager: HelperManaging {}
 
 private final class CompletionGate: @unchecked Sendable {
     private let lock = NSLock()

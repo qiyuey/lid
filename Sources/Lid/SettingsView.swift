@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// The Settings window. Holds the secondary controls and the detailed
-/// explanations that used to clutter the menu bar popover: launch at login,
-/// background-helper setup, the auto-off timer, and About/GitHub.
+/// The Settings window. Uses native Liquid Glass effects for every settings
+/// group while keeping controls as system Picker, Toggle, Button, and Link.
 struct SettingsView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var updater: UpdaterController
@@ -10,91 +9,187 @@ struct SettingsView: View {
     private let repoURL = URL(string: "https://github.com/qiyuey/lid")!
 
     var body: some View {
-        Form {
-            Section("General") {
-                Toggle("Launch at login", isOn: Binding(
-                    get: { state.launchAtLogin },
-                    set: { state.setLaunchAtLogin($0) }
-                ))
-                Button("Show Setup Guide…") { state.showOnboarding() }
-            }
+        let text = state.text
+        GlassEffectContainer(spacing: 16) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    SettingsGlassSection(title: text.sectionGeneral) {
+                        SettingsRow(title: text.languageTitle) {
+                            Picker("", selection: Binding(
+                                get: { state.languagePreference },
+                                set: { state.setLanguagePreference($0) }
+                            )) {
+                                ForEach(AppLanguagePreference.allCases) { preference in
+                                    Text(preference.displayName(using: text)).tag(preference)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .buttonStyle(.glass)
+                        }
 
-            Section {
-                LabeledContent("Status") {
-                    HStack(spacing: 6) {
-                        Image(systemName: state.usingHelper ? "checkmark.shield.fill" : "exclamationmark.shield")
-                            .foregroundStyle(state.usingHelper ? .green : .orange)
-                        Text(state.usingHelper ? "Active" : "Using admin prompt")
-                            .foregroundStyle(.secondary)
+                        SettingsRow(title: text.setupGuideTitle) {
+                            Button(text.open) {
+                                state.showOnboarding()
+                            }
+                            .buttonStyle(.glass)
+                        }
+
+                        SettingsRow(title: text.launchAtLoginTitle) {
+                            Toggle(text.launchAtLoginTitle, isOn: Binding(
+                                get: { state.launchAtLogin },
+                                set: { state.setLaunchAtLogin($0) }
+                            ))
+                            .settingsSwitchStyle()
+                        }
+
+                        SettingsRow(title: text.continueAfterQuitTitle) {
+                            Toggle(text.continueAfterQuitTitle, isOn: Binding(
+                                get: { state.settings.continueAfterQuit },
+                                set: { value in
+                                    var settings = state.settings
+                                    settings.continueAfterQuit = value
+                                    state.updateSettings(settings)
+                                }
+                            ))
+                            .settingsSwitchStyle()
+                        }
                     }
-                }
-                if state.helperInstalled {
-                    Text("Remove the helper before uninstalling Lid or when troubleshooting launchd. Toggling will fall back to the administrator prompt.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Button("Remove background helper…", role: .destructive) {
-                        state.uninstallHelper()
+
+                    SettingsGlassSection(title: text.sectionHelper) {
+                        SettingsRow(title: text.helperTitle) {
+                            if state.helperInstalled {
+                                Button(text.remove, role: .destructive) {
+                                    state.uninstallHelper()
+                                }
+                                .buttonStyle(.glass)
+                            } else {
+                                Button(state.helperNeedsApproval ? text.open : text.install) {
+                                    state.installHelper()
+                                }
+                                .buttonStyle(.glassProminent)
+                            }
+                        }
+
+                        if state.helperNeedsApproval {
+                            SettingsRow(title: text.pendingHelperTitle) {
+                                Button(text.remove, role: .destructive) {
+                                    state.uninstallHelper()
+                                }
+                                .buttonStyle(.glass)
+                            }
+                        }
                     }
-                } else {
-                    Text("Install the background helper once so toggling never asks for your password and the watchdog can protect against a stuck-awake Mac.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Button(state.helperNeedsApproval ? "Open Login Items to approve…" : "Install background helper…") {
-                        state.installHelper()
+
+                    SettingsGlassSection(title: text.sectionAutoOff) {
+                        SettingsRow(title: text.turnOffAfterTitle) {
+                            Picker("", selection: Binding(
+                                get: { state.autoOffMinutes },
+                                set: { state.setAutoOffMinutes($0) }
+                            )) {
+                                Text(text.never).tag(0)
+                                ForEach(AutoOff.presetMinutes, id: \.self) { minutes in
+                                    Text(text.autoOffOptionLabel(minutes: minutes)).tag(minutes)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .buttonStyle(.glass)
+                        }
+
+                        if state.isEnabled, !state.autoOffRemaining.isEmpty {
+                            SettingsRow(title: text.turningOffInTitle) {
+                                Text(state.autoOffRemaining)
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
-                    if state.helperNeedsApproval {
-                        Button("Remove pending helper…", role: .destructive) {
-                            state.uninstallHelper()
+
+                    SettingsGlassSection(title: text.sectionUpdates) {
+                        SettingsRow(title: text.checkAutomaticallyTitle) {
+                            Toggle(text.checkAutomaticallyTitle, isOn: $updater.automaticallyChecksForUpdates)
+                                .settingsSwitchStyle()
+                        }
+
+                        SettingsRow(title: text.checkNowTitle) {
+                            Button(text.check) { updater.checkForUpdates() }
+                                .disabled(!updater.canCheckForUpdates)
+                                .buttonStyle(.glass)
+                        }
+                    }
+
+                    SettingsGlassSection(title: text.sectionAbout) {
+                        SettingsRow(title: text.versionTitle) {
+                            Text(state.appVersion)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+
+                        SettingsRow(title: text.sourceTitle) {
+                            Link("GitHub", destination: repoURL)
+                                .buttonStyle(.glass)
                         }
                     }
                 }
-            } header: {
-                Text("Background helper")
-            }
-
-            Section("Auto-off timer") {
-                Picker("Turn off after", selection: Binding(
-                    get: { state.autoOffMinutes },
-                    set: { state.setAutoOffMinutes($0) }
-                )) {
-                    Text("Never").tag(0)
-                    ForEach(AutoOff.presetMinutes, id: \.self) { m in
-                        Text(AutoOff.optionLabel(minutes: m)).tag(m)
-                    }
-                }
-                if state.isEnabled, !state.autoOffRemaining.isEmpty {
-                    LabeledContent("Turning off in", value: state.autoOffRemaining)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Updates") {
-                Toggle("Check for updates automatically", isOn: $updater.automaticallyChecksForUpdates)
-                Button("Check for Updates…") { updater.checkForUpdates() }
-                    .disabled(!updater.canCheckForUpdates)
-            }
-
-            Section("About") {
-                HStack(spacing: 12) {
-                    if let icon = NSApp.applicationIconImage {
-                        Image(nsImage: icon)
-                            .resizable()
-                            .frame(width: 48, height: 48)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Lid").font(.headline)
-                        Text("Version \(state.appVersion)")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                        Text("Includes MIT-licensed upstream work by Nghia Luong")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Link("View on GitHub", destination: repoURL)
+                .padding(18)
             }
         }
-        .formStyle(.grouped)
+        .controlSize(.small)
+        .buttonStyle(.glass)
         .frame(width: 420, height: 500)
+        .onAppear { NSApp.keyWindow?.title = text.settingsWindowTitle }
+        .onChange(of: state.languagePreference) { _, _ in
+            NSApp.keyWindow?.title = state.text.settingsWindowTitle
+        }
+    }
+}
+
+private struct SettingsGlassSection<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+                .padding(.horizontal, 4)
+
+            VStack(alignment: .leading, spacing: 4) {
+                content()
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(in: .rect(cornerRadius: 20))
+        }
+    }
+}
+
+private struct SettingsRow<Trailing: View>: View {
+    let title: String
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .lineLimit(1)
+
+            Spacer(minLength: 16)
+
+            trailing()
+                .fixedSize()
+                .frame(width: 116, alignment: .trailing)
+        }
+        .frame(minHeight: 34)
+    }
+}
+
+private extension View {
+    func settingsSwitchStyle() -> some View {
+        labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .tint(.accentColor)
     }
 }

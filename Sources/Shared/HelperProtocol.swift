@@ -2,9 +2,9 @@ import Foundation
 
 /// Identity of the privileged helper, derived from the owning app's bundle id so
 /// that Debug (`.dev`) and Release builds get fully isolated daemons/services and
-/// never collide. For app bundle id `com.qiyuey.lid` the helper id — which
+/// never collide. For app bundle id `top.qiyuey.lid` the helper id — which
 /// doubles as its LaunchDaemon label, Mach service name, and the `.plist`
-/// basename — is `com.qiyuey.lid.helper`.
+/// basename — is `top.qiyuey.lid.helper`.
 public enum LidHelperIdentity {
     /// Label / Mach service name for a given app bundle id.
     public static func label(appBundleID: String) -> String { "\(appBundleID).helper" }
@@ -15,17 +15,17 @@ public enum LidHelperIdentity {
     public static let machLabelEnvKey = "LID_MACH_LABEL"
 
     /// Fallback used only if the app bundle id / env var is unavailable.
-    public static let fallbackLabel = "com.qiyuey.lid.helper"
+    public static let fallbackLabel = "top.qiyuey.lid.helper"
 
     public static let allowedClientBundleIDEnvKey = "LID_ALLOWED_CLIENT_BUNDLE_ID"
     public static let allowedTeamIDEnvKey = "LID_ALLOWED_TEAM_ID"
     public static let appVersionEnvKey = "LID_APP_VERSION"
     public static let appBuildEnvKey = "LID_APP_BUILD"
     public static let defaultTeamIdentifier = "7T4ZKYBB6Z"
-    public static let protocolVersion = 1
+    public static let helperVersion = 1
 
     public static func appBundleID(helperLabel: String) -> String {
-        helperLabel.hasSuffix(".helper") ? String(helperLabel.dropLast(".helper".count)) : "com.qiyuey.lid"
+        helperLabel.hasSuffix(".helper") ? String(helperLabel.dropLast(".helper".count)) : "top.qiyuey.lid"
     }
 
     public static func clientCodeSigningRequirement(appBundleID: String, teamID: String) -> String {
@@ -40,7 +40,7 @@ public enum LidHelperIdentity {
         let build = environment[appBuildEnvKey]
             ?? bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String
             ?? "unknown"
-        return "protocol-\(protocolVersion) version-\(version) build-\(build)"
+        return "helper-\(helperVersion) version-\(version) build-\(build)"
     }
 
     private static func requirementLiteral(_ value: String) -> String {
@@ -54,11 +54,14 @@ public enum LidHelperIdentity {
 ///
 /// The helper runs as root (installed via `SMAppService`), so it can flip the
 /// `SleepDisabled` flag without an admin prompt. A heartbeat watchdog inside the
-/// helper auto-restores normal sleep if the app stops checking in — so the Mac
-/// can never get stuck awake if the app crashes or is force-quit.
+/// helper auto-restores normal sleep if the app stops checking in, unless the
+/// user explicitly asks Lid to continue after the app quits.
 @objc public protocol LidHelperProtocol {
     /// Enable/disable lid-close sleep prevention. reply: (success, errorMessage?).
     func setKeepAwake(_ enabled: Bool, withReply reply: @escaping @Sendable (Bool, String?) -> Void)
+
+    /// Enable/disable the heartbeat watchdog. reply: (success, errorMessage?).
+    func setWatchdogEnabled(_ enabled: Bool, withReply reply: @escaping @Sendable (Bool, String?) -> Void)
 
     /// Read the current SleepDisabled flag. reply: (enabled).
     func getState(withReply reply: @escaping @Sendable (Bool) -> Void)

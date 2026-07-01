@@ -122,6 +122,8 @@ final class SharedLogicTests: XCTestCase {
     func testHelperLabelTracksAppBundleID() {
         XCTAssertEqual(LidHelperIdentity.label(appBundleID: "com.example.App"), "com.example.App.helper")
         XCTAssertEqual(LidHelperIdentity.appBundleID(helperLabel: "com.example.App.helper"), "com.example.App")
+        XCTAssertEqual(LidHelperIdentity.fallbackLabel, "top.qiyuey.lid.helper")
+        XCTAssertEqual(LidHelperIdentity.appBundleID(helperLabel: "invalid"), "top.qiyuey.lid")
     }
 
     func testHelperClientCodeSigningRequirementIncludesBundleAndTeam() {
@@ -131,7 +133,7 @@ final class SharedLogicTests: XCTestCase {
         XCTAssertTrue(requirement.contains(#"certificate leaf[subject.OU] = "TEAM123456""#))
     }
 
-    func testHelperVersionStringContainsProtocolVersion() {
+    func testHelperVersionStringContainsHelperVersion() {
         let version = LidHelperIdentity.versionString(
             bundle: .main,
             environment: [
@@ -139,7 +141,7 @@ final class SharedLogicTests: XCTestCase {
                 LidHelperIdentity.appBuildEnvKey: "45"
             ]
         )
-        XCTAssertEqual(version, "protocol-\(LidHelperIdentity.protocolVersion) version-1.2.3 build-45")
+        XCTAssertEqual(version, "helper-\(LidHelperIdentity.helperVersion) version-1.2.3 build-45")
     }
 
     // MARK: ProcessRunner

@@ -1,93 +1,107 @@
 # Lid
 
+[English](README.md) | [中文](README.zh.md)
+
 [![Downloads](https://img.shields.io/github/downloads/qiyuey/lid/total)](https://github.com/qiyuey/lid/releases)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Anti--996-blue)](LICENSE)
 
-A tiny macOS menu-bar app that keeps your Mac running **even with the lid closed** —
-so coding agents (Claude Code, Codex, etc.) keep working while you move around.
+A tiny macOS menu-bar app that keeps your Mac running even when the lid is
+closed. It is built for long-running coding agents, downloads, builds, and
+remote sessions that should continue while your MacBook is tucked away.
 
 > Lid is qiyuey's personal build for local use and experiments. Upstream
 > copyright and the original MIT License are preserved where applicable.
 
 <p align="center">
-  <img src="docs/menu-popover.png" alt="Lid menu bar popover — keep-awake toggle, helper status, battery, and safety controls" width="420">
+  <img src="docs/menu-popover.png" alt="Lid menu bar popover with lid sleep prevention, safety controls, and battery status" width="420">
 </p>
 
-## Features
+## Download
 
-- One-click **keep awake with the lid closed** (menu bar toggle).
-- Privileged background **helper** (`SMAppService`) so toggling never asks for a password.
-- **Watchdog**: if the app crashes or is force-quit, the helper auto-restores normal sleep — the Mac can't get stuck awake.
-- **Safety guards**: pause when running hot, only-while-charging, and a low-battery cutoff.
-- **Auto-off timer**: optionally turn keep-awake off after 15 min – 4 hours, with a live countdown.
-- **Automatic updates** via [Sparkle](https://sparkle-project.org) — EdDSA-signed appcast, notarized DMGs.
-- **Launch at login**, and a clean menu with battery/power status.
+Get the latest signed macOS build from
+[GitHub Releases](https://github.com/qiyuey/lid/releases).
 
-## How it works
+If macOS says the app is damaged or cannot be opened, clear the quarantine
+attribute after installing:
 
-macOS sleeps when you close the lid. The reliable way to override that on Apple Silicon
-is the `SleepDisabled` flag in `IOPMrootDomain` (what `sudo pmset -a disablesleep 1` sets).
-`caffeinate` does **not** prevent lid-close sleep — only this flag does.
+```bash
+xattr -rd com.apple.quarantine "/Applications/Lid.app"
+```
 
-The app talks to a root helper over XPC; the helper flips the flag with no admin prompt and
-runs a heartbeat watchdog. If the app stops checking in (>90s), the helper restores sleep.
+## Why Lid
 
-## Architecture
+- **Lid sleep prevention**: one menu-bar switch keeps work running after the
+  lid closes.
+- **No repeated password prompts**: an optional privileged helper toggles the
+  system flag over XPC.
+- **Watchdog restore**: by default, the helper restores normal sleep if Lid
+  quits or crashes.
+- **Explicit persistence**: enable **Continue after quit** only when you want
+  lid sleep prevention to stay active after exiting the app.
+- **Safety guards**: pause on high thermal state, require charging, and stop at
+  a low-battery cutoff.
+- **Auto-off timer**: return to normal lid-close sleep after 15 minutes to
+  4 hours.
+- **Automatic updates**: Sparkle checks signed releases in the background.
+- **Language control**: follow the system language, or choose English or
+  Chinese manually.
 
-- **`Lid`** — SwiftUI `MenuBarExtra` app (macOS 15+), not sandboxed, `LSUIElement`.
-- **`LidHelper`** — root LaunchDaemon, registered via `SMAppService`, serves `LidHelperProtocol` over XPC. Embedded at `Contents/MacOS/LidHelper` with its plist in `Contents/Library/LaunchDaemons/`.
-- **`Sources/Shared`** — pure, unit-tested logic: pmset parsers, watchdog, safety evaluator, settings.
+## How It Works
 
-## Build (no Xcode GUI needed)
+macOS normally sleeps when a MacBook lid closes. On Apple Silicon, the reliable
+way to override that is the `SleepDisabled` flag in `IOPMrootDomain`, the same
+flag changed by:
 
-Requires the Xcode command-line tools + [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+```bash
+sudo pmset -a disablesleep 1
+```
+
+`caffeinate` does not prevent lid-close sleep. Lid uses a root helper registered
+with `SMAppService` to flip `SleepDisabled` without asking for an administrator
+password every time. While lid sleep prevention is active, the app sends a
+heartbeat to the helper; if the heartbeat stops and **Continue after quit** is
+off, the helper restores normal sleep.
+
+## Build
+
+Lid is a SwiftUI menu-bar app generated with XcodeGen. `project.yml` is the
+source of truth.
 
 ```bash
 xcodegen generate
-xcodebuild test -scheme Lid-CI -destination 'platform=macOS' | xcbeautify
+xcodebuild test -scheme Lid-CI -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
 ```
 
-The `.xcodeproj` is gitignored — `project.yml` is the source of truth.
+Main directories:
 
-## App icon
-
-The app icon and the menu-bar glyphs are committed assets under
-`Resources/Assets.xcassets/` (`AppIcon.appiconset` plus the `MenubarLaptop` /
-`MenubarLaptopActive` template imagesets that mark keep-awake off / on).
-
-`scripts/make_iconset.sh` is kept as a helper for regenerating an icon set from a
-single master if you want to swap the artwork:
-
-```bash
-bash scripts/make_iconset.sh   # renders icon + emits Assets.xcassets/AppIcon.appiconset
-```
+- `Sources/Lid`: SwiftUI app, settings, onboarding, updater, helper lifecycle.
+- `Sources/Helper`: privileged root helper registered through `SMAppService`.
+- `Sources/Shared`: pure logic shared by the app, helper, and tests.
+- `Tests/LidTests`: XCTest coverage for parsers, safety policy, settings, and
+  helper identity.
+- `Resources/Assets.xcassets`: app icon and menu-bar template images.
+- `scripts`: release automation, Sparkle tooling, and helper scripts.
 
 ## Release
 
-Signed + notarized DMG plus the EdDSA-signed Sparkle appcast (needs a Developer ID
-cert, a notarytool keychain profile, and the Sparkle signing key in the keychain):
+Release versions use `YYYY.M.N`, for example `2026.7.1`. Keep
+`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` equal.
+
+Signed and notarized release builds require a Developer ID certificate,
+notarytool credentials, and a Sparkle EdDSA signing key:
 
 ```bash
-./scripts/release.sh   # archive → export → notarize → staple → DMG → appcast → publish
+./scripts/release.sh
 ```
 
-Publishes the DMG to a GitHub Release and writes the feed to `docs/appcast.xml`
-(served at the `SUFeedURL` in `project.yml`).
-
-## Milestones
-
-- **M0** — spike, verified lid-closed on real Apple Silicon (`scripts/lid.sh`). ✅
-- **M1 / M1.5** — menu-bar app + privileged helper + XPC + watchdog. ✅
-- **M2** — safety preferences (thermal / charging / battery) + persistence. ✅
-- **App complete** — icon, launch-at-login, onboarding, About, release pipeline. ✅
-- **Auto-update** — Sparkle with an EdDSA-signed appcast, shipped from `release.sh`. ✅
-- **Later** — signed runtime verification on device.
+The script builds a DMG, notarizes and staples it, publishes a GitHub Release,
+and writes the Sparkle appcast to `docs/appcast.xml`.
 
 ## Safety
 
-Running with the lid closed under heavy load can heat the machine and drain the battery.
-Keep it plugged in and ventilated. The safety guards auto-pause on heat / low battery,
-and a reboot always resets the underlying flag.
+Running a MacBook closed under heavy load can increase heat and drain battery.
+Keep the machine plugged in and ventilated. Lid's safety controls reduce risk,
+and a reboot always resets the underlying `SleepDisabled` flag.
 
 To report a security issue, see [SECURITY.md](SECURITY.md).
 

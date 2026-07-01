@@ -10,7 +10,7 @@ final class AutoOffController {
     private(set) var remaining = ""
 
     var onChange: (@MainActor @Sendable () -> Void)?
-    var onExpired: (@MainActor @Sendable (String) -> Void)?
+    var onExpired: (@MainActor @Sendable (Int) -> Void)?
 
     init(store: SettingsStore) {
         self.store = store
@@ -66,7 +66,7 @@ final class AutoOffController {
         if AutoOff.isExpired(deadline: deadline, now: Date()) {
             let elapsed = minutes
             cancel()
-            onExpired?("Auto-off: \(AutoOff.optionLabel(minutes: elapsed)) elapsed.")
+            onExpired?(elapsed)
         } else {
             refreshRemaining()
             notify()

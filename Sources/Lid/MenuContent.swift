@@ -1,69 +1,46 @@
 import SwiftUI
 
-/// Shared horizontal inset so every row, divider, and the footer line up on the
-/// same leading/trailing columns.
-private let hInset: CGFloat = 20
+/// Shared inset for the floating glass groups in the menu window.
+private let menuInset: CGFloat = 10
 
 /// The menu bar popover — "Minimal Quick Toggle".
 ///
-/// Keeps only the essentials: the primary keep-awake switch, a compact status
-/// strip, and the core safety controls. Everything secondary (helper setup,
-/// launch at login, auto-off timer, GitHub) lives in the Settings window.
+/// Keeps only the essentials: the primary keep-awake switch, the current
+/// battery context, and the core safety controls. Everything secondary (helper
+/// setup, launch at login, auto-off timer, GitHub) lives in Settings.
 struct MenuContent: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            PopoverHeader()
-                .padding(.horizontal, hInset)
-                .padding(.top, 18)
+        GlassEffectContainer(spacing: 10) {
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    PrimaryToggleRow()
+                    ContinueAfterQuitRow()
 
-            Text("Keep your Mac awake when the lid is closed.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, hInset)
-                .padding(.top, 8)
+                    if let err = state.lastError {
+                        Label(err, systemImage: "info.circle")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 6)
+                    }
+                }
+                .menuGlassGroup(cornerRadius: 20)
 
-            Divider()
-                .padding(.horizontal, hInset)
-                .padding(.top, 14)
+                if !state.usingHelper {
+                    HelperNotice()
+                }
 
-            PrimaryToggleRow()
-                .padding(.horizontal, hInset)
+                SafetySection()
+                    .menuGlassGroup(cornerRadius: 20)
 
-            Divider()
-                .padding(.horizontal, hInset)
-
-            StatusStrip()
-                .padding(.horizontal, hInset)
-                .padding(.vertical, 10)
-
-            if let err = state.lastError {
-                Label(err, systemImage: "info.circle")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, hInset)
-                    .padding(.bottom, 10)
+                FooterActions()
+                    .menuGlassGroup(cornerRadius: 18)
             }
-
-            Divider()
-                .padding(.horizontal, hInset)
-
-            SafetySection()
-                .padding(.horizontal, hInset)
-                .padding(.top, 12)
-
-            Divider()
-                .padding(.horizontal, hInset)
-                .padding(.top, 12)
-
-            FooterActions()
-                .padding(.horizontal, hInset)
-                .padding(.bottom, 14)
+            .padding(menuInset)
         }
-        .frame(width: 360)
+        .frame(width: 348)
     }
 }
 
@@ -74,15 +51,24 @@ struct MenuContent: View {
 /// safety row so all controls share one trailing column.
 private struct SettingRow<Trailing: View>: View {
     let title: String
+    var subtitle: String?
     var titleFont: Font = .callout
     var minHeight: CGFloat = 36
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(title)
-                .font(titleFont)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(titleFont)
+                    .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
             Spacer(minLength: 16)
             trailing()
                 .fixedSize()
@@ -91,84 +77,105 @@ private struct SettingRow<Trailing: View>: View {
     }
 }
 
-// MARK: - Header
+private extension View {
+    func menuSwitchStyle() -> some View {
+        labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .tint(.accentColor)
+    }
 
-private struct PopoverHeader: View {
-    @EnvironmentObject var state: AppState
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Lid").font(.headline)
-            Spacer()
-            Text("v\(state.appVersion)")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
+    func menuGlassGroup(cornerRadius: CGFloat) -> some View {
+        padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(in: .rect(cornerRadius: cornerRadius))
     }
 }
 
 // MARK: - Primary control
 
-/// The strongest row in the popover: the main keep-awake action.
+/// The strongest row in the popover: the main lid sleep prevention action.
 private struct PrimaryToggleRow: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        SettingRow(title: "Keep awake with lid closed",
-                   titleFont: .body.weight(.semibold),
-                   minHeight: 42) {
-            Toggle("Keep awake with lid closed", isOn: Binding(
+        let text = state.text
+        SettingRow(title: text.primaryTitle,
+                   subtitle: state.isEnabled ? text.primaryOnSubtitle : text.primaryOffSubtitle,
+                   titleFont: .callout,
+                   minHeight: 46) {
+            Toggle(text.primaryToggleLabel, isOn: Binding(
                 get: { state.isEnabled },
-                set: { _ in state.toggle() }
+                set: { value in state.setEnabled(value, userInitiated: true) }
             ))
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.regular)
-            .tint(.accentColor)
+            .menuSwitchStyle()
+            .disabled(!state.usingHelper)
+            .help(state.usingHelper ? text.primaryToggleLabel : text.installHelperRequiredMessage)
         }
     }
 }
 
-// MARK: - Status strip
+private struct ContinueAfterQuitRow: View {
+    @EnvironmentObject var state: AppState
 
-/// Essential live status only: helper health + battery level.
-private struct StatusStrip: View {
+    var body: some View {
+        let text = state.text
+        SettingRow(title: text.continueAfterQuitTitle,
+                   subtitle: state.settings.continueAfterQuit ? text.continueAfterQuitOnSubtitle : text.continueAfterQuitOffSubtitle,
+                   minHeight: 46) {
+            Toggle(text.continueAfterQuitTitle, isOn: Binding(
+                get: { state.settings.continueAfterQuit },
+                set: { value in
+                    var settings = state.settings
+                    settings.continueAfterQuit = value
+                    state.updateSettings(settings)
+                }
+                ))
+                .menuSwitchStyle()
+                .help(text.continueAfterQuitHelp)
+        }
+    }
+}
+
+// MARK: - Helper
+
+private struct HelperNotice: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
         HStack(spacing: 12) {
-            HStack(spacing: 6) {
-                Image(systemName: state.usingHelper ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                    .foregroundStyle(state.usingHelper ? .green : .orange)
-                Text(state.usingHelper ? "Helper active" : "Helper inactive")
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(state.usingHelper ? "Background helper active" : "Background helper inactive")
+            Label(title, systemImage: "exclamationmark.triangle.fill")
+                .font(.callout)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.orange)
+                .lineLimit(1)
 
             Spacer(minLength: 12)
 
-            HStack(spacing: 6) {
-                Image(systemName: batterySymbol)
-                Text("Battery \(state.batteryPercent)%")
-                    .monospacedDigit()
+            Button(buttonTitle) {
+                state.installHelper()
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Battery \(state.batteryPercent) percent\(state.batteryOnAC ? ", on power" : "")")
+            .controlSize(.small)
+            .buttonStyle(.glassProminent)
+            .help(buttonHelp)
         }
-        .font(.callout)
-        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .glassEffect(in: .rect(cornerRadius: 14))
     }
 
-    /// Closest native battery glyph for the current charge (names available on
-    /// macOS 15+).
-    private var batterySymbol: String {
-        switch state.batteryPercent {
-        case 88...:   return "battery.100"
-        case 63..<88: return "battery.75"
-        case 38..<63: return "battery.50"
-        case 13..<38: return "battery.25"
-        default:      return "battery.0"
-        }
+    private var title: String {
+        state.helperNeedsApproval ? state.text.helperNeedsApprovalNotice : state.text.helperNotice
+    }
+
+    private var buttonTitle: String {
+        state.helperNeedsApproval ? state.text.open : state.text.install
+    }
+
+    private var buttonHelp: String {
+        state.helperNeedsApproval ? state.text.onboardingOpenLoginItems : state.text.onboardingInstallHelper
     }
 }
 
@@ -178,45 +185,98 @@ private struct SafetySection: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
+        let text = state.text
         VStack(alignment: .leading, spacing: 0) {
-            Text("Safety")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 2)
+            HStack {
+                Text(text.safetyTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                BatteryStatus(percent: state.batteryPercent, onAC: state.batteryOnAC)
+            }
+            .padding(.bottom, 6)
 
-            SettingRow(title: "Only while charging") {
-                Toggle("Only while charging", isOn: Binding(
+            SettingRow(title: text.onlyWhileCharging) {
+                Toggle(text.onlyWhileCharging, isOn: Binding(
                     get: { state.settings.onlyWhileCharging },
                     set: { v in var s = state.settings; s.onlyWhileCharging = v; state.updateSettings(s) }
                 ))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
+                .menuSwitchStyle()
             }
 
-            SettingRow(title: "Pause when running hot") {
-                Toggle("Pause when running hot", isOn: Binding(
+            SettingRow(title: text.pauseWhenHot) {
+                Toggle(text.pauseWhenHot, isOn: Binding(
                     get: { state.settings.pauseOnHighThermal },
                     set: { v in var s = state.settings; s.pauseOnHighThermal = v; state.updateSettings(s) }
                 ))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
+                .menuSwitchStyle()
             }
 
-            SettingRow(title: "Low-battery cutoff") {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(text.lowBatteryCutoff)
+                        .font(.callout)
+                    Spacer(minLength: 16)
                     Text("\(state.settings.lowBatteryThreshold)%")
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
-                    Stepper("Low-battery cutoff", value: Binding(
-                        get: { state.settings.lowBatteryThreshold },
-                        set: { v in var s = state.settings; s.lowBatteryThreshold = v; state.updateSettings(s) }
-                    ), in: 5...50, step: 5)
-                    .labelsHidden()
-                    .controlSize(.small)
+                        .frame(width: 44, alignment: .trailing)
                 }
+                .frame(minHeight: 30)
+
+                Slider(value: thresholdBinding, in: 5...50, step: 5) {
+                    Text(text.lowBatteryCutoff)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity)
+                .accessibilityValue("\(state.settings.lowBatteryThreshold)%")
             }
+            .padding(.top, 2)
+            .padding(.bottom, 8)
+        }
+    }
+
+    private var thresholdBinding: Binding<Double> {
+        Binding(
+            get: { Double(state.settings.lowBatteryThreshold) },
+            set: { value in
+                var settings = state.settings
+                settings.lowBatteryThreshold = Int(value)
+                state.updateSettings(settings)
+            }
+        )
+    }
+}
+
+private struct BatteryStatus: View {
+    @EnvironmentObject var state: AppState
+
+    let percent: Int
+    let onAC: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol)
+                .symbolRenderingMode(.hierarchical)
+                .frame(width: 22, alignment: .trailing)
+            Text("\(percent)%")
+                .monospacedDigit()
+                .frame(width: 36, alignment: .trailing)
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(state.text.batteryAccessibility(percent: percent, onAC: onAC))
+    }
+
+    private var symbol: String {
+        switch percent {
+        case 88...:   return "battery.100"
+        case 63..<88: return "battery.75"
+        case 38..<63: return "battery.50"
+        case 13..<38: return "battery.25"
+        default:      return "battery.0"
         }
     }
 }
@@ -233,24 +293,32 @@ private struct FooterActions: View {
             Button {
                 state.quit()
             } label: {
-                Label("Quit Lid", systemImage: "power")
-                    .foregroundStyle(.secondary)
+                Image(systemName: "power")
             }
             .keyboardShortcut("q")
+            .help(state.text.quitLid)
+            .buttonStyle(.glass)
+            .controlSize(.small)
         }
-        .buttonStyle(.plain)
-        .font(.callout)
-        .frame(minHeight: 36)
+        .font(.title3)
+        .frame(minHeight: 30)
     }
 }
 
-/// Opens the standard macOS Settings window.
+/// Opens Lid's Settings window.
 private struct SettingsButton: View {
+    @EnvironmentObject var settingsController: SettingsController
+    @EnvironmentObject var state: AppState
+
     var body: some View {
-        SettingsLink {
-            Label("Settings…", systemImage: "gearshape")
-                .foregroundStyle(.secondary)
+        Button {
+            settingsController.show()
+        } label: {
+            Image(systemName: "gearshape")
         }
         .keyboardShortcut(",", modifiers: .command)
+        .help(state.text.settings)
+        .buttonStyle(.glass)
+        .controlSize(.small)
     }
 }

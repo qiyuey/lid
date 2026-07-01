@@ -26,15 +26,19 @@ final class OnboardingController {
             let root = OnboardingView().environmentObject(state)
             let hosting = NSHostingController(rootView: root)
             let win = NSWindow(contentViewController: hosting)
-            win.title = "Welcome to Lid"
+            win.title = state.text.onboardingWindowTitle
             win.styleMask = [.titled, .closable, .fullSizeContentView]
             win.titlebarAppearsTransparent = true
             win.isMovableByWindowBackground = true
+            win.isOpaque = false
+            win.backgroundColor = .clear
             win.isReleasedWhenClosed = false
+            win.contentMinSize = NSSize(width: 500, height: 540)
             win.center()
             window = win
         }
 
+        window?.title = state.text.onboardingWindowTitle
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
         window?.center()

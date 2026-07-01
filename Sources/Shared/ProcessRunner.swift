@@ -12,7 +12,7 @@ public struct ProcessRunResult: Equatable, Sendable {
 }
 
 public enum ProcessRunner {
-    private static let logger = Logger(subsystem: "com.qiyuey.lid", category: "process")
+    private static let logger = Logger(subsystem: "top.qiyuey.lid", category: "process")
 
     public static func run(_ path: String,
                            _ arguments: [String],

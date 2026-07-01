@@ -14,11 +14,14 @@ final class AppState: ObservableObject {
     @Published var batteryOnAC = false
     @Published var lastError: String?
 
-    /// True when using the privileged helper; false when on the M1 admin-prompt fallback.
+    /// True when the privileged helper is installed and usable.
     @Published var usingHelper = false
 
     /// User-tunable safety preferences (persisted).
     @Published var settings: SafetySettings = .default
+
+    /// App UI language preference (persisted). Defaults to following macOS.
+    @Published var languagePreference: AppLanguagePreference = .system
 
     /// Launch-at-login state (the app itself).
     @Published var launchAtLogin = false
@@ -35,7 +38,7 @@ final class AppState: ObservableObject {
     @Published var onboardingComplete = false
 
     private let helper = HelperManager()
-    private let fallback = PowerManager()
+    private let emergencyRestorer = EmergencySleepRestorer()
     private let battery = BatteryMonitor()
     private let store = SettingsStore()
     private let loginItem = LoginItemManager()
@@ -48,21 +51,31 @@ final class AppState: ObservableObject {
     var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
     }
+
+    var text: AppStrings {
+        AppStrings(language: languagePreference.effectiveLanguage)
+    }
+
+    private var alerts: AlertPresenter {
+        AlertPresenter(text: text)
+    }
+
     private var helperStatusTimer: Timer?
     private var heartbeatTimer: Timer?
+    private var lastRequestedHelperWatchdogEnabled: Bool?
 
-    /// True while the onboarding window is open and not yet completed.
-    private var onboardingActive = false
     private var didBecomeActiveObserver: NSObjectProtocol?
+    private var localeObserver: NSObjectProtocol?
     private var thermalObserver: NSObjectProtocol?
 
     init() {
         settings = store.load()
+        languagePreference = AppLanguagePreference(rawValue: store.loadLanguagePreference()) ?? .system
         onboardingComplete = store.loadOnboardingComplete()
         configureAutoOff()
         launchAtLogin = loginItem.isEnabled
         refreshHelperStatus()
-        refreshHelperRegistrationIfUpdated()
+        refreshHelperRegistrationIfNeeded()
         helperLifecycle.captureUsableBaseline()
         refreshState()
         refreshBattery()
@@ -83,17 +96,23 @@ final class AppState: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in self?.recheckHelper() }
         }
+        localeObserver = NotificationCenter.default.addObserver(
+            forName: NSLocale.currentLocaleDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                if self?.languagePreference == .system {
+                    self?.objectWillChange.send()
+                }
+            }
+        }
         thermalObserver = NotificationCenter.default.addObserver(
             forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.evaluateSafety() }
         }
         // First launch shows onboarding once (persisted so closing it early won't
-        // re-nag). A relaunch triggered mid-onboarding resumes the flow instead.
-        if store.loadResumeOnboarding() {
-            store.saveResumeOnboarding(false)
-            DispatchQueue.main.async { [weak self] in self?.showOnboarding() }
-        } else if !onboardingComplete {
+        // re-nag).
+        if !onboardingComplete {
             onboardingComplete = true
             store.saveOnboardingComplete(true)
             DispatchQueue.main.async { [weak self] in self?.showOnboarding() }
@@ -107,6 +126,9 @@ final class AppState: ObservableObject {
             if let didBecomeActiveObserver {
                 NotificationCenter.default.removeObserver(didBecomeActiveObserver)
             }
+            if let localeObserver {
+                NotificationCenter.default.removeObserver(localeObserver)
+            }
             if let thermalObserver {
                 NotificationCenter.default.removeObserver(thermalObserver)
             }
@@ -117,25 +139,32 @@ final class AppState: ObservableObject {
 
     /// Present the first-run setup window (also reachable from Settings).
     func showOnboarding() {
-        onboardingActive = true
         onboarding.show()
     }
 
     /// Mark onboarding done, persist it, and close the window.
     func completeOnboarding() {
-        onboardingActive = false
         onboardingComplete = true
         store.saveOnboardingComplete(true)
-        store.saveResumeOnboarding(false)
         onboarding.close()
     }
 
     // MARK: Settings
 
     func updateSettings(_ new: SafetySettings) {
+        let quitPolicyChanged = settings.continueAfterQuit != new.continueAfterQuit
         settings = new
         store.save(new)
+        if quitPolicyChanged {
+            syncHelperWatchdogPolicy(force: true)
+        }
         evaluateSafety()
+    }
+
+    func setLanguagePreference(_ preference: AppLanguagePreference) {
+        languagePreference = preference
+        store.saveLanguagePreference(preference.rawValue)
+        objectWillChange.send()
     }
 
     /// Change the auto-off duration. Re-arms (or cancels) the live timer when
@@ -160,7 +189,7 @@ final class AppState: ObservableObject {
         if let reason = safety.reasonToDisable(settings: settings) {
             // Pass the message through so it survives the async helper callback
             // (which would otherwise clear lastError on success).
-            setEnabled(false, note: reason.message)
+            setEnabled(false, note: text.safetyAutoPaused(reason))
         }
     }
 
@@ -171,55 +200,24 @@ final class AppState: ObservableObject {
         syncHelperStatus()
     }
 
-    /// After an app update the helper binary is re-signed and its launchd job can
-    /// keep a stale launch record, so the daemon fails to start (EX_CONFIG) and
-    /// XPC calls hang — the toggle then silently does nothing. On the first launch
-    /// of a new build, probe the registered daemon; only if it's unreachable do we
-    /// rebuild its registration (which may require re-approval). Healthy updates
-    /// are left untouched, so they don't needlessly prompt for approval.
-    private func refreshHelperRegistrationIfUpdated() {
-        helperLifecycle.refreshRegistrationIfUpdated { [weak self] in
+    /// When the bundled helper version changes, probe the registered daemon and
+    /// rebuild launchd's registration if the running helper is missing, stale, or
+    /// unreachable. Healthy helpers are left untouched, so app-only updates don't
+    /// needlessly prompt for approval.
+    private func refreshHelperRegistrationIfNeeded() {
+        helperLifecycle.refreshRegistrationIfNeeded { [weak self] in
             self?.repairHelper()
         }
     }
 
     /// Re-read helper status; if it just became usable (the user approved it while
-    /// the app was running), pick up its keep-awake state and prompt a restart so
-    /// the app fully switches onto the privileged helper.
+    /// the app was running), pick up its keep-awake state without interrupting the
+    /// current flow.
     func recheckHelper() {
         let becameUsable = helperLifecycle.recheckBecameUsable()
         syncHelperStatus()
         guard becameUsable else { return }
         refreshState()
-        promptRestartAfterHelperEnabled()
-    }
-
-    /// Tell the user the helper is now active and offer to relaunch. The privileged
-    /// XPC connection is most reliable from a fresh launch, so a restart is the
-    /// simplest way to finish setup.
-    private func promptRestartAfterHelperEnabled() {
-        // If this happened mid-onboarding, resume the flow after the relaunch.
-        if onboardingActive { store.saveResumeOnboarding(true) }
-
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = "Background helper enabled"
-        alert.informativeText = "Restart Lid to finish connecting to the background helper."
-        alert.addButton(withTitle: "Restart Now")
-        alert.addButton(withTitle: "Later")
-        if alert.runModal() == .alertFirstButtonReturn {
-            relaunch()
-        }
-    }
-
-    /// Spawn a fresh instance of the app, then terminate this one.
-    private func relaunch() {
-        let config = NSWorkspace.OpenConfiguration()
-        config.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { _, _ in }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            NSApp.terminate(nil)
-        }
     }
 
     func installHelper() {
@@ -235,15 +233,15 @@ final class AppState: ObservableObject {
             let becameUsable = try helperLifecycle.register()
             syncHelperStatus()
             if helperLifecycle.needsApproval {
-                lastError = "Approve Lid in System Settings ▸ Login Items."
+                lastError = text.approveHelperPrompt
                 helper.openLoginItemsSettings()
             } else {
                 lastError = nil
+                syncHelperWatchdogPolicy(force: true)
                 // Rare: registered and immediately usable (already approved). Treat
                 // it as the same enable transition the approval path would hit.
                 if becameUsable {
                     refreshState()
-                    promptRestartAfterHelperEnabled()
                 }
             }
         } catch {
@@ -255,7 +253,7 @@ final class AppState: ObservableObject {
     /// Kept separate from `installHelper()` so re-registration can never swallow
     /// the open.
     func openLoginItems() {
-        lastError = "Approve Lid in System Settings ▸ Login Items."
+        lastError = text.approveHelperPrompt
         helper.openLoginItemsSettings()
         refreshHelperStatus()
     }
@@ -266,7 +264,7 @@ final class AppState: ObservableObject {
             lastError = nil
             return
         }
-        guard confirmUninstallHelper() else { return }
+        guard alerts.confirmUninstallHelper() else { return }
 
         restoreSleepBeforeHelperRemoval { [weak self] restored in
             guard let self, restored else { return }
@@ -277,7 +275,7 @@ final class AppState: ObservableObject {
                     self.lastError = errorMessage
                     return
                 }
-                self.lastError = "Background helper removed. Lid will use the administrator prompt until you install it again."
+                self.lastError = self.text.helperRemovedMessage
                 self.refreshState()
                 self.manageHeartbeat()
             }
@@ -298,7 +296,7 @@ final class AppState: ObservableObject {
             }
 
             do {
-                try self.fallback.setSleepDisabled(false)
+                try self.emergencyRestorer.restoreNormalSleep()
                 self.isEnabled = false
                 self.lastError = nil
                 self.manageHeartbeat()
@@ -306,7 +304,7 @@ final class AppState: ObservableObject {
                 completion(true)
             } catch {
                 self.lastError = error.localizedDescription
-                self.presentHelperUninstallRestoreFailureAlert(message: error.localizedDescription)
+                self.alerts.presentHelperUninstallRestoreFailure(message: error.localizedDescription)
                 completion(false)
             }
         }
@@ -316,9 +314,16 @@ final class AppState: ObservableObject {
 
     func refreshState() {
         if helperInstalled {
-            helper.getState { [weak self] value in self?.isEnabled = value }
+            helper.getState { [weak self] value in
+                guard let self else { return }
+                self.isEnabled = value
+                self.manageHeartbeat()
+                self.updateAutoOff(for: value)
+            }
         } else {
-            isEnabled = fallback.isSleepDisabled()
+            isEnabled = emergencyRestorer.isSleepDisabled()
+            manageHeartbeat()
+            updateAutoOff(for: isEnabled)
         }
     }
 
@@ -326,7 +331,7 @@ final class AppState: ObservableObject {
     /// refusal surfaces a visible alert (not just the easy-to-miss inline note).
     func toggle() { setEnabled(!isEnabled, userInitiated: true) }
 
-    /// Set keep-awake. `note` is shown to the user on a successful change
+    /// Set lid sleep prevention. `note` is shown to the user on a successful change
     /// (used when an auto-pause or the auto-off timer disables it); nil clears
     /// any prior message. When `userInitiated` is true (the user flipped the
     /// toggle), a failure or policy refusal also pops a blocking alert so it
@@ -338,13 +343,22 @@ final class AppState: ObservableObject {
         // Refuse to enable if it would immediately violate the safety policy.
         if target {
             if let blocker = safety.reasonToDisable(settings: settings) {
-                lastError = blocker.message
+                lastError = text.safetyAutoPaused(blocker)
                 if userInitiated {
-                    presentFailureAlert(target: target, message: blocker.blockedMessage)
+                    alerts.presentToggleFailure(target: target, message: text.safetyBlocked(blocker))
                 }
                 completion?(false)
                 return
             }
+        }
+        if target && !helperInstalled {
+            let message = text.installHelperRequiredMessage
+            lastError = message
+            if userInitiated {
+                alerts.presentToggleFailure(target: target, message: message)
+            }
+            completion?(false)
+            return
         }
         let resultMessage = note
         if helperInstalled {
@@ -353,6 +367,9 @@ final class AppState: ObservableObject {
                 if ok {
                     self.isEnabled = target
                     self.lastError = resultMessage
+                    if target {
+                        self.syncHelperWatchdogPolicy(force: true)
+                    }
                     self.manageHeartbeat()
                     self.updateAutoOff(for: target)
                     completion?(true)
@@ -360,24 +377,32 @@ final class AppState: ObservableObject {
                     // The helper can fail without a message (e.g. a dropped XPC
                     // reply, or the daemon failing to launch after an update);
                     // surface it instead of letting the toggle silently no-op.
-                    let message = err ?? "The background helper didn’t respond."
+                    let message = err ?? self.text.helperNoResponse
                     self.lastError = message
-                    if userInitiated { self.presentHelperFailureAlert(message: message) }
+                    if userInitiated {
+                        self.alerts.presentHelperFailure(message: message) { [weak self] in
+                            self?.repairHelper()
+                        }
+                    }
                     self.refreshState()
                     completion?(false)
                 }
             }
         } else {
+            // Enabling without the helper was rejected above; this branch only
+            // restores normal sleep if the flag was left on.
             do {
-                try fallback.setSleepDisabled(target)
+                try emergencyRestorer.restoreNormalSleep()
                 isEnabled = target
                 lastError = resultMessage
                 updateAutoOff(for: target)
                 completion?(true)
             } catch {
                 lastError = error.localizedDescription
-                if userInitiated { presentFailureAlert(target: target, message: error.localizedDescription) }
-                isEnabled = fallback.isSleepDisabled()
+                if userInitiated {
+                    alerts.presentToggleFailure(target: target, message: error.localizedDescription)
+                }
+                isEnabled = emergencyRestorer.isSleepDisabled()
                 completion?(false)
             }
         }
@@ -391,83 +416,41 @@ final class AppState: ObservableObject {
             return
         }
 
+        if settings.continueAfterQuit {
+            continueAwakeAfterQuit()
+            return
+        }
+
         setEnabled(false) { [weak self] ok in
             guard let self else { return }
             if ok {
                 NSApp.terminate(nil)
             } else {
-                self.presentQuitAfterRestoreFailureAlert()
+                self.alerts.presentQuitAfterRestoreFailure {
+                    NSApp.terminate(nil)
+                }
             }
         }
     }
 
-    private func presentQuitAfterRestoreFailureAlert() {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Couldn’t turn keep-awake off"
-        alert.informativeText = "Lid could not restore normal sleep before quitting. Quit anyway and let the background watchdog restore it shortly?"
-        alert.addButton(withTitle: "Quit Anyway")
-        alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn {
+    private func continueAwakeAfterQuit() {
+        guard helperInstalled else {
+            NSApp.terminate(nil)
+            return
+        }
+
+        helper.setWatchdogEnabled(false) { [weak self] ok, err in
+            guard let self else { return }
+            if !ok {
+                self.lastError = err ?? self.text.continueAfterQuitHelperError
+            }
             NSApp.terminate(nil)
         }
     }
 
-    private func confirmUninstallHelper() -> Bool {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Remove background helper?"
-        alert.informativeText = "Lid will restore normal sleep first, then remove its privileged helper. Future toggles will use the administrator prompt until you install the helper again."
-        alert.addButton(withTitle: "Remove Helper")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
-    }
-
-    private func presentHelperUninstallRestoreFailureAlert(message: String) {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Couldn’t remove background helper"
-        alert.informativeText = "Lid could not restore normal sleep, so the helper was left installed.\n\n\(message)"
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
-
-    /// Pop a blocking alert when a user-initiated toggle can't be applied, so the
-    /// reason is impossible to miss. The inline `lastError` note still persists in
-    /// the popover after the alert is dismissed.
-    private func presentFailureAlert(target: Bool, message: String) {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = target ? "Couldn’t keep your Mac awake" : "Couldn’t turn keep-awake off"
-        alert.informativeText = message
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
-
-    /// The helper is registered but didn't respond — almost always a stale
-    /// registration after an app update (launchd refuses to launch the new
-    /// binary). Offer a one-click reinstall, which re-registers and refreshes
-    /// that record.
-    private func presentHelperFailureAlert(message: String) {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Couldn’t keep your Mac awake"
-        alert.informativeText = "\(message)\n\nThis usually happens after an update. Reinstalling the background helper fixes it."
-        alert.addButton(withTitle: "Reinstall Helper…")
-        alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn {
-            repairHelper()
-        }
-    }
-
     /// Re-register the privileged helper to refresh launchd's record, then report
-    /// the outcome. Used both automatically (after a detected app update) and from
-    /// the failure alert's "Reinstall Helper" action.
+    /// the outcome. Used both automatically after a helper-version mismatch and
+    /// from the failure alert's "Reinstall Helper" action.
     func repairHelper() {
         helperLifecycle.repair { [weak self] errorMessage in
             guard let self else { return }
@@ -475,10 +458,11 @@ final class AppState: ObservableObject {
             if let errorMessage {
                 self.lastError = errorMessage
             } else if self.helperLifecycle.needsApproval {
-                self.lastError = "Approve Lid in System Settings ▸ Login Items, then try the switch again."
+                self.lastError = self.text.approveHelperThenTry
                 self.helper.openLoginItemsSettings()
             } else {
-                self.lastError = "Background helper reinstalled — try the switch again."
+                self.syncHelperWatchdogPolicy(force: true)
+                self.lastError = self.text.helperReinstalledMessage
             }
         }
     }
@@ -487,6 +471,24 @@ final class AppState: ObservableObject {
         helperInstalled = helperLifecycle.installed
         helperNeedsApproval = helperLifecycle.needsApproval
         usingHelper = helperLifecycle.usingHelper
+    }
+
+    private func syncHelperWatchdogPolicy(force: Bool = false) {
+        guard helperInstalled else {
+            lastRequestedHelperWatchdogEnabled = nil
+            return
+        }
+
+        let watchdogEnabled = !settings.continueAfterQuit
+        guard force || lastRequestedHelperWatchdogEnabled != watchdogEnabled else { return }
+        lastRequestedHelperWatchdogEnabled = watchdogEnabled
+        helper.setWatchdogEnabled(watchdogEnabled) { [weak self] ok, err in
+            guard let self else { return }
+            if !ok {
+                self.lastRequestedHelperWatchdogEnabled = nil
+                self.lastError = err ?? self.text.watchdogPolicyError
+            }
+        }
     }
 
     // MARK: Heartbeat (keeps the helper watchdog satisfied)
@@ -507,12 +509,13 @@ final class AppState: ObservableObject {
         autoOff.onChange = { [weak self] in
             self?.objectWillChange.send()
         }
-        autoOff.onExpired = { [weak self] note in
-            self?.setEnabled(false, note: note)
+        autoOff.onExpired = { [weak self] minutes in
+            guard let self else { return }
+            self.setEnabled(false, note: self.text.autoOffExpired(minutes: minutes))
         }
     }
 
-    /// Arm when keep-awake turns on, cancel when it turns off.
+    /// Arm when lid sleep prevention turns on, cancel when it turns off.
     private func updateAutoOff(for enabled: Bool) {
         autoOff.update(for: enabled)
     }

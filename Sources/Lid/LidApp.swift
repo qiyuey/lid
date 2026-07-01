@@ -5,27 +5,26 @@ import SwiftUI
 struct LidApp: App {
     @StateObject private var state: AppState
     @StateObject private var updater: UpdaterController
+    @StateObject private var settingsController: SettingsController
 
     init() {
         MaintenanceCommand.runIfRequested()
-        _state = StateObject(wrappedValue: AppState())
-        _updater = StateObject(wrappedValue: UpdaterController())
+        let appState = AppState()
+        let updaterController = UpdaterController()
+        _state = StateObject(wrappedValue: appState)
+        _updater = StateObject(wrappedValue: updaterController)
+        _settingsController = StateObject(wrappedValue: SettingsController(state: appState, updater: updaterController))
     }
 
     var body: some Scene {
         MenuBarExtra {
             MenuContent()
                 .environmentObject(state)
+                .environmentObject(settingsController)
         } label: {
             Image(state.isEnabled ? "MenubarLaptopActive" : "MenubarLaptop")
         }
         .menuBarExtraStyle(.window)
-
-        Settings {
-            SettingsView()
-                .environmentObject(state)
-                .environmentObject(updater)
-        }
     }
 }
 

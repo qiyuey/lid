@@ -11,19 +11,65 @@ struct OnboardingView: View {
     private let lastStep = 3
 
     var body: some View {
-        VStack(spacing: 0) {
-            stepContent
-                .padding(.horizontal, 36)
-                .padding(.top, 36)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        GlassEffectContainer(spacing: 16) {
+            VStack(spacing: 16) {
+                topBar
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .glassEffect(in: .rect(cornerRadius: 18))
 
-            Divider()
+                stepContent
+                    .id(step)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .animation(.easeInOut(duration: 0.18), value: step)
 
-            footer
-                .padding(.horizontal, 24)
-                .padding(.vertical, 16)
+                footer
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .glassEffect(in: .rect(cornerRadius: 18))
+            }
+            .padding(18)
         }
-        .frame(width: 460, height: 560)
+        .frame(width: 500, height: 540)
+    }
+
+    @ViewBuilder
+    private var topBar: some View {
+        let text = state.text
+        HStack(spacing: 10) {
+            if let icon = NSApp.applicationIconImage {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 28, height: 28)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(text.onboardingWindowTitle)
+                    .font(.headline)
+                Text(text.stepLabel(step: step + 1, total: lastStep + 1))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            Spacer()
+
+            progressDots
+        }
+    }
+
+    private var progressDots: some View {
+        HStack(spacing: 6) {
+            ForEach(0...lastStep, id: \.self) { i in
+                Circle()
+                    .fill(i == step ? Color.accentColor : Color.secondary.opacity(0.28))
+                    .frame(width: 7, height: 7)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(state.text.stepLabel(step: step + 1, total: lastStep + 1))
     }
 
     // MARK: Steps
@@ -38,52 +84,54 @@ struct OnboardingView: View {
         }
     }
 
+    @ViewBuilder
     private var welcomeStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if let icon = NSApp.applicationIconImage {
-                Image(nsImage: icon)
-                    .resizable()
-                    .frame(width: 88, height: 88)
-                    .frame(maxWidth: .infinity, alignment: .center)
-            }
-            Text("Welcome to Lid")
-                .font(.largeTitle.weight(.semibold))
-            Text("Keep your Mac awake — even with the lid closed.")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-            Text("Perfect for letting coding agents, downloads, or builds keep running while you close the lid and carry your Mac around. `caffeinate` can't do this — Lid can.")
+        let text = state.text
+        VStack(alignment: .leading, spacing: 18) {
+            header(symbol: "macbook", title: text.onboardingWelcomeTitle, subtitle: text.onboardingWelcomeSubtitle)
+            Text(text.onboardingWelcomeBody)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 12) {
+                bullet("menubar.rectangle", text.onboardingMenuBullet)
+                bullet("moon.zzz.fill", text.onboardingSleepBullet)
+            }
+            .padding(.top, 4)
         }
     }
 
+    @ViewBuilder
     private var howItWorksStep: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            header(symbol: "bolt.fill", title: "How it works")
-            VStack(alignment: .leading, spacing: 16) {
-                bullet("macbook", "Overrides the lid-close sleep that normally stops everything when you shut the lid.")
-                bullet("thermometer.medium", "Auto-pauses if the Mac runs hot or the battery runs low — so it stays safe unattended.")
-                bullet("shield.lefthalf.filled", "A watchdog restores normal sleep if Lid ever quits or crashes, so your Mac can never get stuck awake.")
+        let text = state.text
+        VStack(alignment: .leading, spacing: 18) {
+            header(symbol: "bolt.fill", title: text.onboardingHowTitle, subtitle: text.onboardingHowSubtitle)
+            VStack(alignment: .leading, spacing: 12) {
+                bullet("macbook", text.onboardingOverrideBullet)
+                bullet("thermometer.medium", text.onboardingSafetyBullet)
+                bullet("shield.lefthalf.filled", text.onboardingWatchdogBullet)
             }
-            Label("Keep your Mac plugged in and ventilated under heavy use.", systemImage: "info.circle")
+            Label(text.onboardingVentilationNote, systemImage: "info.circle")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
         }
     }
 
+    @ViewBuilder
     private var helperStep: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            header(symbol: "key.fill", title: "Skip the password prompts")
-            Text("Install a small background helper so turning keep-awake on and off never asks for your admin password — and the safety watchdog can run.")
+        let text = state.text
+        VStack(alignment: .leading, spacing: 18) {
+            header(symbol: "key.fill", title: text.onboardingHelperTitle, subtitle: text.onboardingHelperSubtitle)
+            Text(text.onboardingHelperBody)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             helperStatusBox
 
-            Text("Optional — Lid still works without it; it'll just ask for your password each time you toggle.")
+            Text(text.onboardingHelperOptional)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -94,16 +142,25 @@ struct OnboardingView: View {
     private var helperStatusBox: some View {
         VStack(alignment: .leading, spacing: 10) {
             if state.usingHelper {
-                Label("Background helper installed and active.", systemImage: "checkmark.circle.fill")
+                Label(state.text.onboardingHelperActive, systemImage: "checkmark.shield.fill")
                     .foregroundStyle(.green)
             } else if state.helperNeedsApproval {
-                Label("Approve Lid under System Settings ▸ Login Items, then come back here.", systemImage: "exclamationmark.circle.fill")
+                Label(state.text.onboardingHelperApproval, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Open Login Items to approve…") { state.installHelper() }
+                Button {
+                    state.installHelper()
+                } label: {
+                    Label(state.text.onboardingOpenLoginItems, systemImage: "gearshape")
+                }
+                .buttonStyle(.glass)
             } else {
-                Button("Install background helper…") { state.installHelper() }
-                    .buttonStyle(.borderedProminent)
+                Button {
+                    state.installHelper()
+                } label: {
+                    Label(state.text.onboardingInstallHelper, systemImage: "key.fill")
+                }
+                .buttonStyle(.glassProminent)
             }
 
             if let err = state.lastError, !state.usingHelper {
@@ -115,18 +172,20 @@ struct OnboardingView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+        .glassEffect(in: .rect(cornerRadius: 14))
     }
 
+    @ViewBuilder
     private var doneStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            header(symbol: "checkmark.circle.fill", title: "You're all set")
-            Text("Click the Lid icon in the menu bar and flip **Keep awake with lid closed** whenever you need it. Safety options live in Settings.")
+        let text = state.text
+        VStack(alignment: .leading, spacing: 18) {
+            header(symbol: "checkmark.circle.fill", title: text.onboardingDoneTitle, subtitle: text.onboardingDoneSubtitle)
+            Text(text.onboardingDoneBody)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Toggle("Launch Lid at login", isOn: Binding(
+            Toggle(text.onboardingLaunchAtLogin, isOn: Binding(
                 get: { state.launchAtLogin },
                 set: { state.setLaunchAtLogin($0) }
             ))
@@ -137,59 +196,63 @@ struct OnboardingView: View {
 
     // MARK: Footer
 
+    @ViewBuilder
     private var footer: some View {
+        let text = state.text
         HStack {
-            Button("Back") {
-                withAnimation { step -= 1 }
+            Button(text.back) {
+                withAnimation(.easeInOut(duration: 0.18)) { step -= 1 }
             }
             .disabled(step == 0)
             .opacity(step == 0 ? 0 : 1)
+            .buttonStyle(.glass)
+            .frame(minWidth: 84, alignment: .leading)
 
             Spacer()
 
-            HStack(spacing: 6) {
-                ForEach(0...lastStep, id: \.self) { i in
-                    Circle()
-                        .fill(i == step ? Color.accentColor : Color.secondary.opacity(0.3))
-                        .frame(width: 7, height: 7)
-                }
-            }
-
-            Spacer()
-
-            Button(step == lastStep ? "Done" : "Continue") {
+            Button(step == lastStep ? text.done : text.continue) {
                 if step == lastStep {
                     state.completeOnboarding()
                 } else {
-                    withAnimation { step += 1 }
+                    withAnimation(.easeInOut(duration: 0.18)) { step += 1 }
                 }
             }
             .keyboardShortcut(.defaultAction)
+            .buttonStyle(.glassProminent)
+            .frame(minWidth: 96)
         }
     }
 
     // MARK: Helpers
 
-    private func header(symbol: String, title: String) -> some View {
+    private func header(symbol: String, title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 36))
-                .foregroundStyle(.tint)
+            symbolTile(symbol, size: 58, fontSize: 26)
             Text(title)
                 .font(.title.weight(.semibold))
+            Text(subtitle)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func bullet(_ symbol: String, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: symbol)
-                .font(.title3)
-                .foregroundStyle(.tint)
-                .frame(width: 26)
+        HStack(alignment: .top, spacing: 12) {
+            symbolTile(symbol, size: 30, fontSize: 14)
             Text(text)
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
+    }
+
+    private func symbolTile(_ symbol: String, size: CGFloat, fontSize: CGFloat) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: fontSize, weight: .semibold))
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(.tint)
+            .frame(width: size, height: size)
+            .glassEffect(.regular.tint(.accentColor.opacity(0.18)), in: .rect(cornerRadius: 12))
     }
 }

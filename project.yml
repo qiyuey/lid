@@ -1,8 +1,8 @@
 name: Lid
 options:
-  bundleIdPrefix: com.qiyuey
+  bundleIdPrefix: top.qiyuey
   deploymentTarget:
-    macOS: "15.0"
+    macOS: "26.0"
   createIntermediateGroups: true
 
 settings:
@@ -33,7 +33,7 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleIconName: AppIcon
-        LSMinimumSystemVersion: "15.0"
+        LSMinimumSystemVersion: "26.0"
         NSHumanReadableCopyright: "© 2026 qiyuey. Portions © 2026 Nghia Luong."
         SUFeedURL: https://raw.githubusercontent.com/qiyuey/lid/main/docs/appcast.xml
         SUPublicEDKey: dckHUqDIcxNZCpJR5HErR90BA2jfh4n9VKz1Ne7kRF4=
@@ -50,9 +50,9 @@ targets:
         # Debug builds get a `.dev` bundle id so a dev build coexists with the
         # released app — separate UserDefaults, login item, and helper daemon.
         Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: com.qiyuey.lid.dev
+          PRODUCT_BUNDLE_IDENTIFIER: top.qiyuey.lid.dev
         Release:
-          PRODUCT_BUNDLE_IDENTIFIER: com.qiyuey.lid
+          PRODUCT_BUNDLE_IDENTIFIER: top.qiyuey.lid
     dependencies:
       - target: LidHelper
         copy:
@@ -120,9 +120,9 @@ targets:
       configs:
         # Helper bundle id tracks the app's (`<app id>.helper`) per build config.
         Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: com.qiyuey.lid.dev.helper
+          PRODUCT_BUNDLE_IDENTIFIER: top.qiyuey.lid.dev.helper
         Release:
-          PRODUCT_BUNDLE_IDENTIFIER: com.qiyuey.lid.helper
+          PRODUCT_BUNDLE_IDENTIFIER: top.qiyuey.lid.helper
 
   LidTests:
     type: bundle.unit-test
@@ -130,9 +130,10 @@ targets:
     sources:
       - Tests/LidTests
       - Sources/Shared
+      - Sources/Lid/HelperLifecycleController.swift
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.qiyuey.lidTests
+        PRODUCT_BUNDLE_IDENTIFIER: top.qiyuey.lidTests
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:

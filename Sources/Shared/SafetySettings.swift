@@ -5,17 +5,23 @@ public struct SafetySettings: Equatable, Sendable {
     public var lowBatteryThreshold: Int
     public var onlyWhileCharging: Bool
     public var pauseOnHighThermal: Bool
+    public var continueAfterQuit: Bool
 
     public static let `default` = SafetySettings(
         lowBatteryThreshold: 20,
         onlyWhileCharging: false,
-        pauseOnHighThermal: true
+        pauseOnHighThermal: true,
+        continueAfterQuit: false
     )
 
-    public init(lowBatteryThreshold: Int, onlyWhileCharging: Bool, pauseOnHighThermal: Bool) {
+    public init(lowBatteryThreshold: Int,
+                onlyWhileCharging: Bool,
+                pauseOnHighThermal: Bool,
+                continueAfterQuit: Bool) {
         self.lowBatteryThreshold = lowBatteryThreshold
         self.onlyWhileCharging = onlyWhileCharging
         self.pauseOnHighThermal = pauseOnHighThermal
+        self.continueAfterQuit = continueAfterQuit
     }
 }
 

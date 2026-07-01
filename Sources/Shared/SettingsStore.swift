@@ -9,11 +9,12 @@ public struct SettingsStore {
         static let lowBattery   = "lowBatteryThreshold"
         static let onlyCharging = "onlyWhileCharging"
         static let pauseThermal = "pauseOnHighThermal"
+        static let continueAfterQuit = "continueAfterQuit"
         static let seeded       = "settingsSeeded"
         static let autoOff      = "autoOffMinutes"
+        static let language     = "languagePreference"
         static let onboarded    = "onboardingComplete"
-        static let resumeOnboarding = "resumeOnboarding"
-        static let helperBuild  = "lastRegisteredHelperBuild"
+        static let helperVersion = "lastRegisteredHelperVersion"
     }
 
     public init(defaults: UserDefaults = .standard) {
@@ -25,7 +26,8 @@ public struct SettingsStore {
         return SafetySettings(
             lowBatteryThreshold: defaults.integer(forKey: Key.lowBattery),
             onlyWhileCharging: defaults.bool(forKey: Key.onlyCharging),
-            pauseOnHighThermal: defaults.bool(forKey: Key.pauseThermal)
+            pauseOnHighThermal: defaults.bool(forKey: Key.pauseThermal),
+            continueAfterQuit: defaults.bool(forKey: Key.continueAfterQuit)
         )
     }
 
@@ -33,6 +35,7 @@ public struct SettingsStore {
         defaults.set(settings.lowBatteryThreshold, forKey: Key.lowBattery)
         defaults.set(settings.onlyWhileCharging, forKey: Key.onlyCharging)
         defaults.set(settings.pauseOnHighThermal, forKey: Key.pauseThermal)
+        defaults.set(settings.continueAfterQuit, forKey: Key.continueAfterQuit)
         defaults.set(true, forKey: Key.seeded)
     }
 
@@ -45,6 +48,15 @@ public struct SettingsStore {
         defaults.set(minutes, forKey: Key.autoOff)
     }
 
+    /// App UI language preference. Empty means "follow system".
+    public func loadLanguagePreference() -> String {
+        defaults.string(forKey: Key.language) ?? ""
+    }
+
+    public func saveLanguagePreference(_ rawValue: String) {
+        defaults.set(rawValue, forKey: Key.language)
+    }
+
     /// Whether the user has been through first-run onboarding. Defaults to false.
     public func loadOnboardingComplete() -> Bool {
         defaults.bool(forKey: Key.onboarded)
@@ -54,26 +66,17 @@ public struct SettingsStore {
         defaults.set(complete, forKey: Key.onboarded)
     }
 
-    /// Whether onboarding should be re-shown on the next launch — set when the app
-    /// relaunches itself mid-onboarding (after the helper is enabled) so the flow
-    /// resumes instead of being lost. Defaults to false.
-    public func loadResumeOnboarding() -> Bool {
-        defaults.bool(forKey: Key.resumeOnboarding)
+    /// The helper version for which the privileged helper was last
+    /// (re-)registered. Empty until the first registration.
+    public func loadLastHelperVersion() -> String {
+        defaults.string(forKey: Key.helperVersion) ?? ""
     }
 
-    public func saveResumeOnboarding(_ resume: Bool) {
-        defaults.set(resume, forKey: Key.resumeOnboarding)
+    public func saveLastHelperVersion(_ version: String) {
+        defaults.set(version, forKey: Key.helperVersion)
     }
 
-    /// The app build (`CFBundleVersion`) for which the privileged helper was last
-    /// (re-)registered. Used to refresh the launchd registration after an update,
-    /// so the daemon keeps launching with the new binary's requirement. Empty
-    /// until the first registration.
-    public func loadLastHelperBuild() -> String {
-        defaults.string(forKey: Key.helperBuild) ?? ""
-    }
-
-    public func saveLastHelperBuild(_ build: String) {
-        defaults.set(build, forKey: Key.helperBuild)
+    public func clearLastHelperVersion() {
+        defaults.removeObject(forKey: Key.helperVersion)
     }
 }

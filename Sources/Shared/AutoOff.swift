@@ -2,8 +2,9 @@ import Foundation
 
 /// Auto-off timer logic (pure, unit-testable).
 ///
-/// Keep-awake is a convenience, not a safety mechanism, so the countdown lives
-/// in the app — if the app dies the helper watchdog restores sleep anyway.
+/// Lid sleep prevention is a convenience, not a safety mechanism, so the
+/// countdown lives in the app. By default, the helper watchdog restores sleep if
+/// the app dies; `continueAfterQuit` is the explicit user opt-out.
 public enum AutoOff {
     /// Selectable durations (minutes). `0` means "no auto-off" (stay on until off).
     public static let presetMinutes = [15, 30, 60, 120, 240]

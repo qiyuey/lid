@@ -71,8 +71,20 @@ final class SafetyEvaluatorTests: XCTestCase {
         s.onlyWhileCharging = true
         s.pauseOnHighThermal = false
         s.lowBatteryThreshold = 35
+        s.continueAfterQuit = true
         store.save(s)
         XCTAssertEqual(store.load(), s)
+        d.removePersistentDomain(forName: suite)
+    }
+
+    func testSettingsStoreLanguagePreferenceRoundTrip() {
+        let suite = "test.lid.language"
+        let d = UserDefaults(suiteName: suite)!
+        d.removePersistentDomain(forName: suite)
+        let store = SettingsStore(defaults: d)
+        XCTAssertEqual(store.loadLanguagePreference(), "")
+        store.saveLanguagePreference("chinese")
+        XCTAssertEqual(store.loadLanguagePreference(), "chinese")
         d.removePersistentDomain(forName: suite)
     }
 }

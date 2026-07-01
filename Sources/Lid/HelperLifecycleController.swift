@@ -11,27 +11,19 @@ protocol HelperManaging: AnyObject {
     func checkReachable(completion: @escaping @MainActor @Sendable (Bool) -> Void)
 }
 
-extension HelperManager: HelperManaging {}
-
 @MainActor
 final class HelperLifecycleController {
     private let helper: HelperManaging
     private let store: SettingsStore
-    private let currentBuild: () -> String
     private var usableBaseline = false
 
     private(set) var installed = false
     private(set) var needsApproval = false
     private(set) var usingHelper = false
 
-    init(helper: HelperManaging,
-         store: SettingsStore,
-         currentBuild: @escaping () -> String = {
-             Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
-         }) {
+    init(helper: HelperManaging, store: SettingsStore) {
         self.helper = helper
         self.store = store
-        self.currentBuild = currentBuild
     }
 
     func refreshStatus() {
@@ -44,14 +36,16 @@ final class HelperLifecycleController {
         usableBaseline = usingHelper
     }
 
-    func refreshRegistrationIfUpdated(onRepairNeeded: @escaping @MainActor @Sendable () -> Void) {
-        let build = currentBuild()
-        guard !build.isEmpty else { return }
-        guard store.loadLastHelperBuild() != build else { return }
-        storeCurrentBuild()
+    func refreshRegistrationIfNeeded(onRepairNeeded: @escaping @MainActor @Sendable () -> Void) {
+        let fingerprint = helperRegistrationFingerprint()
+        guard store.loadLastHelperVersion() != fingerprint else { return }
         guard helper.isEnabled else { return }
-        helper.checkReachable { reachable in
-            guard !reachable else { return }
+        helper.checkReachable { [weak self] reachable in
+            guard let self else { return }
+            if reachable {
+                self.storeCurrentHelperVersion()
+                return
+            }
             onRepairNeeded()
         }
     }
@@ -59,6 +53,9 @@ final class HelperLifecycleController {
     func recheckBecameUsable() -> Bool {
         let wasUsable = usableBaseline
         refreshStatus()
+        if usingHelper {
+            storeCurrentHelperVersion()
+        }
         usableBaseline = usingHelper
         return !wasUsable && usingHelper
     }
@@ -67,6 +64,9 @@ final class HelperLifecycleController {
         let wasUsable = usableBaseline
         try helper.register()
         refreshStatus()
+        if usingHelper {
+            storeCurrentHelperVersion()
+        }
         usableBaseline = usingHelper
         return !wasUsable && usingHelper
     }
@@ -80,6 +80,7 @@ final class HelperLifecycleController {
             self.refreshStatus()
             if errorMessage == nil {
                 self.usableBaseline = false
+                self.clearStoredHelperVersion()
             }
             completion(errorMessage)
         }
@@ -92,12 +93,22 @@ final class HelperLifecycleController {
                 return
             }
             self.refreshStatus()
-            self.storeCurrentBuild()
+            if errorMessage == nil, self.usingHelper {
+                self.storeCurrentHelperVersion()
+            }
             completion(errorMessage)
         }
     }
 
-    func storeCurrentBuild() {
-        store.saveLastHelperBuild(currentBuild())
+    func storeCurrentHelperVersion() {
+        store.saveLastHelperVersion(helperRegistrationFingerprint())
+    }
+
+    private func clearStoredHelperVersion() {
+        store.clearLastHelperVersion()
+    }
+
+    private func helperRegistrationFingerprint() -> String {
+        "helper-\(LidHelperIdentity.helperVersion)"
     }
 }
