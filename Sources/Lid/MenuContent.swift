@@ -160,7 +160,7 @@ private struct StatusStrip: View {
     }
 
     /// Closest native battery glyph for the current charge (names available on
-    /// macOS 13+).
+    /// macOS 15+).
     private var batterySymbol: String {
         switch state.batteryPercent {
         case 88...:   return "battery.100"
@@ -244,25 +244,13 @@ private struct FooterActions: View {
     }
 }
 
-/// Opens the standard macOS Settings window. Uses the native `SettingsLink` on
-/// macOS 14+, falling back to the AppKit action selector on macOS 13.
+/// Opens the standard macOS Settings window.
 private struct SettingsButton: View {
     var body: some View {
-        if #available(macOS 14.0, *) {
-            SettingsLink {
-                Label("Settings…", systemImage: "gearshape")
-                    .foregroundStyle(.secondary)
-            }
-            .keyboardShortcut(",", modifiers: .command)
-        } else {
-            Button {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                NSApp.activate(ignoringOtherApps: true)
-            } label: {
-                Label("Settings…", systemImage: "gearshape")
-                    .foregroundStyle(.secondary)
-            }
-            .keyboardShortcut(",", modifiers: .command)
+        SettingsLink {
+            Label("Settings…", systemImage: "gearshape")
+                .foregroundStyle(.secondary)
         }
+        .keyboardShortcut(",", modifiers: .command)
     }
 }

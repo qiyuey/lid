@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 final class AutoOffController {
     private let store: SettingsStore
     private var timer: Timer?
@@ -8,8 +9,8 @@ final class AutoOffController {
     private(set) var deadline: Date?
     private(set) var remaining = ""
 
-    var onChange: (() -> Void)?
-    var onExpired: ((String) -> Void)?
+    var onChange: (@MainActor @Sendable () -> Void)?
+    var onExpired: (@MainActor @Sendable (String) -> Void)?
 
     init(store: SettingsStore) {
         self.store = store
@@ -36,7 +37,9 @@ final class AutoOffController {
     }
 
     deinit {
-        stop()
+        MainActor.assumeIsolated {
+            stop()
+        }
     }
 
     private func arm() {
@@ -45,7 +48,7 @@ final class AutoOffController {
         deadline = AutoOff.deadline(from: Date(), minutes: minutes)
         refreshRemaining()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.tick()
+            Task { @MainActor in self?.tick() }
         }
         notify()
     }

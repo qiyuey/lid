@@ -4,6 +4,7 @@ import ServiceManagement
 
 /// Manages the privileged helper: registration via SMAppService and XPC calls.
 /// All completion handlers are delivered on the main queue.
+@MainActor
 final class HelperManager {
     private var connection: NSXPCConnection?
 
@@ -31,15 +32,14 @@ final class HelperManager {
 
     func unregister() throws { try service.unregister() }
 
-    func unregister(completion: @escaping (Error?) -> Void) {
+    func unregister(completion: @escaping @MainActor @Sendable (String?) -> Void) {
         let svc = service
         connection?.invalidate()
         connection = nil
-        svc.unregister { [weak self] error in
-            DispatchQueue.main.async {
-                self?.connection?.invalidate()
-                self?.connection = nil
-                completion(error)
+        svc.unregister { error in
+            let message = error?.localizedDescription
+            Task { @MainActor in
+                completion(message)
             }
         }
     }
@@ -54,18 +54,23 @@ final class HelperManager {
     /// `unregister` is asynchronous, so we register from its completion (a
     /// register issued immediately after fails with the unregister still settling).
     /// `completion` is delivered on the main queue with any registration error.
-    func reregister(completion: @escaping (Error?) -> Void) {
+    func reregister(completion: @escaping @MainActor @Sendable (String?) -> Void) {
         let svc = service
         connection?.invalidate()
         connection = nil
-        svc.unregister { _ in
+        svc.unregister { [weak self] _ in
             // Give launchd/BTM a moment to drop the old job before re-adding it.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            Task { @MainActor in
+                guard let self else {
+                    completion(nil)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 500_000_000)
                 do {
-                    try svc.register()
+                    try self.service.register()
                     completion(nil)
                 } catch {
-                    completion(error)
+                    completion(error.localizedDescription)
                 }
             }
         }
@@ -87,27 +92,30 @@ final class HelperManager {
         if let existing = connection { return existing }
         let conn = NSXPCConnection(machServiceName: helperLabel, options: .privileged)
         conn.remoteObjectInterface = NSXPCInterface(with: LidHelperProtocol.self)
-        conn.invalidationHandler = { [weak self] in self?.connection = nil }
+        conn.invalidationHandler = { [weak self] in
+            Task { @MainActor in self?.connection = nil }
+        }
         conn.interruptionHandler = { }
         conn.resume()
         connection = conn
         return conn
     }
 
-    private func remote(_ onError: @escaping (String) -> Void) -> LidHelperProtocol? {
+    private func remote(_ onError: @escaping @MainActor @Sendable (String) -> Void) -> LidHelperProtocol? {
         let proxy = connect().remoteObjectProxyWithErrorHandler { error in
-            DispatchQueue.main.async { onError(error.localizedDescription) }
+            let message = error.localizedDescription
+            Task { @MainActor in onError(message) }
         }
         return proxy as? LidHelperProtocol
     }
 
-    func setKeepAwake(_ enabled: Bool, completion: @escaping (Bool, String?) -> Void) {
+    func setKeepAwake(_ enabled: Bool, completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
         callWithTimeout(completion: completion) { proxy, done in
             proxy.setKeepAwake(enabled) { ok, err in done(ok, err) }
         }
     }
 
-    func getState(completion: @escaping (Bool) -> Void) {
+    func getState(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         callWithTimeout(completion: { ok, _ in completion(ok) }) { proxy, done in
             proxy.getState { value in done(value, nil) }
         }
@@ -120,7 +128,7 @@ final class HelperManager {
     /// True if the daemon answers with the current protocol version, false if it
     /// can't be reached (connection error / timeout) or is an older helper.
     /// Used to detect registered-but-unlaunchable or stale helpers after updates.
-    func checkReachable(completion: @escaping (Bool) -> Void) {
+    func checkReachable(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         callWithTimeout(timeout: 5, completion: { ok, _ in completion(ok) }) { proxy, done in
             proxy.version { version in
                 done(version.hasPrefix("protocol-\(LidHelperIdentity.protocolVersion) "), nil)
@@ -133,13 +141,12 @@ final class HelperManager {
     /// update, so neither the reply nor the connection's error handler ever fires
     /// — a timeout reports failure instead of leaving the UI hung and silent.
     private func callWithTimeout(timeout: TimeInterval = 6,
-                                 completion: @escaping (Bool, String?) -> Void,
-                                 _ body: (LidHelperProtocol, @escaping (Bool, String?) -> Void) -> Void) {
-        var finished = false
-        let finish: (Bool, String?) -> Void = { ok, err in
-            DispatchQueue.main.async {
-                guard !finished else { return }
-                finished = true
+                                 completion: @escaping @MainActor @Sendable (Bool, String?) -> Void,
+                                 _ body: (LidHelperProtocol, @escaping @Sendable (Bool, String?) -> Void) -> Void) {
+        let gate = CompletionGate()
+        let finish: @Sendable (Bool, String?) -> Void = { ok, err in
+            Task { @MainActor in
+                guard gate.claim() else { return }
                 completion(ok, err)
             }
         }
@@ -151,5 +158,18 @@ final class HelperManager {
             finish(false, "The background helper isn’t responding.")
         }
         body(proxy) { ok, err in finish(ok, err) }
+    }
+}
+
+private final class CompletionGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finished = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !finished else { return false }
+        finished = true
+        return true
     }
 }

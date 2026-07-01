@@ -30,6 +30,7 @@ struct LidApp: App {
 }
 
 private enum MaintenanceCommand {
+    @MainActor
     static func runIfRequested() {
         if CommandLine.arguments.contains("--register-helper") {
             do {

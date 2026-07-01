@@ -2,19 +2,19 @@ name: Lid
 options:
   bundleIdPrefix: com.qiyuey
   deploymentTarget:
-    macOS: "13.0"
+    macOS: "15.0"
   createIntermediateGroups: true
 
 settings:
   base:
-    SWIFT_VERSION: "5.0"
+    SWIFT_VERSION: "6.0"
     DEVELOPMENT_TEAM: 7T4ZKYBB6Z
     CODE_SIGN_STYLE: Automatic
 
 packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
-    from: 2.6.0
+    from: 2.9.3
 
 targets:
   Lid:
@@ -33,7 +33,7 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleIconName: AppIcon
-        LSMinimumSystemVersion: "13.0"
+        LSMinimumSystemVersion: "15.0"
         NSHumanReadableCopyright: "© 2026 qiyuey. Portions © 2026 Nghia Luong."
         SUFeedURL: https://raw.githubusercontent.com/qiyuey/lid/main/docs/appcast.xml
         SUPublicEDKey: dckHUqDIcxNZCpJR5HErR90BA2jfh4n9VKz1Ne7kRF4=

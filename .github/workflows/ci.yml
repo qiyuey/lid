@@ -6,10 +6,10 @@ on:
 
 jobs:
   build-test:
-    runs-on: macos-15
+    runs-on: macos-26
     if:     github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install tools
         run: brew install xcodegen xcbeautify
@@ -21,7 +21,7 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild test \
-            -scheme Lidless-CI \
+            -scheme Lid-CI \
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify

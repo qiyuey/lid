@@ -20,7 +20,7 @@ final class HelperListenerDelegate: NSObject, NSXPCListenerDelegate {
 
 /// The actual privileged work. Runs as root, so it can call `pmset` directly
 /// with no admin prompt. Guards against a stuck-awake state with a watchdog.
-final class HelperService: NSObject, LidHelperProtocol {
+final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.qiyuey.lid.helper.state")
     private var lastHeartbeat = Date()
     private var keepAwake = false
@@ -34,7 +34,7 @@ final class HelperService: NSObject, LidHelperProtocol {
 
     // MARK: LidHelperProtocol
 
-    func setKeepAwake(_ enabled: Bool, withReply reply: @escaping (Bool, String?) -> Void) {
+    func setKeepAwake(_ enabled: Bool, withReply reply: @escaping @Sendable (Bool, String?) -> Void) {
         queue.async {
             let result = self.runPmset(disableSleep: enabled)
             if result.ok {
@@ -45,19 +45,19 @@ final class HelperService: NSObject, LidHelperProtocol {
         }
     }
 
-    func getState(withReply reply: @escaping (Bool) -> Void) {
+    func getState(withReply reply: @escaping @Sendable (Bool) -> Void) {
         let out = Self.capture("/usr/bin/pmset", ["-g"]) ?? ""
         reply(PowerParsers.isSleepDisabled(pmsetG: out))
     }
 
-    func heartbeat(withReply reply: @escaping (Bool) -> Void) {
+    func heartbeat(withReply reply: @escaping @Sendable (Bool) -> Void) {
         queue.async {
             self.lastHeartbeat = Date()
             reply(true)
         }
     }
 
-    func version(withReply reply: @escaping (String) -> Void) {
+    func version(withReply reply: @escaping @Sendable (String) -> Void) {
         reply(LidHelperIdentity.versionString(bundle: .main))
     }
 

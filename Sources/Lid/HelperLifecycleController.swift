@@ -1,13 +1,14 @@
 import Foundation
 
+@MainActor
 protocol HelperManaging: AnyObject {
     var isEnabled: Bool { get }
     var requiresApproval: Bool { get }
 
     func register() throws
-    func unregister(completion: @escaping (Error?) -> Void)
-    func reregister(completion: @escaping (Error?) -> Void)
-    func checkReachable(completion: @escaping (Bool) -> Void)
+    func unregister(completion: @escaping @MainActor @Sendable (String?) -> Void)
+    func reregister(completion: @escaping @MainActor @Sendable (String?) -> Void)
+    func checkReachable(completion: @escaping @MainActor @Sendable (Bool) -> Void)
 }
 
 extension HelperManager: HelperManaging {}
@@ -43,7 +44,7 @@ final class HelperLifecycleController {
         usableBaseline = usingHelper
     }
 
-    func refreshRegistrationIfUpdated(onRepairNeeded: @escaping () -> Void) {
+    func refreshRegistrationIfUpdated(onRepairNeeded: @escaping @MainActor @Sendable () -> Void) {
         let build = currentBuild()
         guard !build.isEmpty else { return }
         guard store.loadLastHelperBuild() != build else { return }
@@ -70,29 +71,29 @@ final class HelperLifecycleController {
         return !wasUsable && usingHelper
     }
 
-    func unregister(completion: @escaping (Error?) -> Void) {
-        helper.unregister { [weak self] error in
+    func unregister(completion: @escaping @MainActor @Sendable (String?) -> Void) {
+        helper.unregister { [weak self] errorMessage in
             guard let self else {
-                completion(error)
+                completion(errorMessage)
                 return
             }
             self.refreshStatus()
-            if error == nil {
+            if errorMessage == nil {
                 self.usableBaseline = false
             }
-            completion(error)
+            completion(errorMessage)
         }
     }
 
-    func repair(completion: @escaping (Error?) -> Void) {
-        helper.reregister { [weak self] error in
+    func repair(completion: @escaping @MainActor @Sendable (String?) -> Void) {
+        helper.reregister { [weak self] errorMessage in
             guard let self else {
-                completion(error)
+                completion(errorMessage)
                 return
             }
             self.refreshStatus()
             self.storeCurrentBuild()
-            completion(error)
+            completion(errorMessage)
         }
     }
 

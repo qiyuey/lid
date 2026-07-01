@@ -101,13 +101,15 @@ final class AppState: ObservableObject {
     }
 
     deinit {
-        helperStatusTimer?.invalidate()
-        heartbeatTimer?.invalidate()
-        if let didBecomeActiveObserver {
-            NotificationCenter.default.removeObserver(didBecomeActiveObserver)
-        }
-        if let thermalObserver {
-            NotificationCenter.default.removeObserver(thermalObserver)
+        MainActor.assumeIsolated {
+            helperStatusTimer?.invalidate()
+            heartbeatTimer?.invalidate()
+            if let didBecomeActiveObserver {
+                NotificationCenter.default.removeObserver(didBecomeActiveObserver)
+            }
+            if let thermalObserver {
+                NotificationCenter.default.removeObserver(thermalObserver)
+            }
         }
     }
 
@@ -268,11 +270,11 @@ final class AppState: ObservableObject {
 
         restoreSleepBeforeHelperRemoval { [weak self] restored in
             guard let self, restored else { return }
-            self.helperLifecycle.unregister { [weak self] error in
+            self.helperLifecycle.unregister { [weak self] errorMessage in
                 guard let self else { return }
                 self.syncHelperStatus()
-                if let error {
-                    self.lastError = error.localizedDescription
+                if let errorMessage {
+                    self.lastError = errorMessage
                     return
                 }
                 self.lastError = "Background helper removed. Lid will use the administrator prompt until you install it again."
@@ -467,11 +469,11 @@ final class AppState: ObservableObject {
     /// the outcome. Used both automatically (after a detected app update) and from
     /// the failure alert's "Reinstall Helper" action.
     func repairHelper() {
-        helperLifecycle.repair { [weak self] error in
+        helperLifecycle.repair { [weak self] errorMessage in
             guard let self else { return }
             self.syncHelperStatus()
-            if let error {
-                self.lastError = error.localizedDescription
+            if let errorMessage {
+                self.lastError = errorMessage
             } else if self.helperLifecycle.needsApproval {
                 self.lastError = "Approve Lid in System Settings ▸ Login Items, then try the switch again."
                 self.helper.openLoginItemsSettings()
@@ -503,10 +505,10 @@ final class AppState: ObservableObject {
 
     private func configureAutoOff() {
         autoOff.onChange = { [weak self] in
-            Task { @MainActor in self?.objectWillChange.send() }
+            self?.objectWillChange.send()
         }
         autoOff.onExpired = { [weak self] note in
-            Task { @MainActor in self?.setEnabled(false, note: note) }
+            self?.setEnabled(false, note: note)
         }
     }
 

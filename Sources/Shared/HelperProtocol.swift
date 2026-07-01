@@ -58,14 +58,14 @@ public enum LidHelperIdentity {
 /// can never get stuck awake if the app crashes or is force-quit.
 @objc public protocol LidHelperProtocol {
     /// Enable/disable lid-close sleep prevention. reply: (success, errorMessage?).
-    func setKeepAwake(_ enabled: Bool, withReply reply: @escaping (Bool, String?) -> Void)
+    func setKeepAwake(_ enabled: Bool, withReply reply: @escaping @Sendable (Bool, String?) -> Void)
 
     /// Read the current SleepDisabled flag. reply: (enabled).
-    func getState(withReply reply: @escaping (Bool) -> Void)
+    func getState(withReply reply: @escaping @Sendable (Bool) -> Void)
 
     /// Heartbeat from the app; resets the watchdog timer.
-    func heartbeat(withReply reply: @escaping (Bool) -> Void)
+    func heartbeat(withReply reply: @escaping @Sendable (Bool) -> Void)
 
     /// Helper version string, for a connection sanity check.
-    func version(withReply reply: @escaping (String) -> Void)
+    func version(withReply reply: @escaping @Sendable (String) -> Void)
 }

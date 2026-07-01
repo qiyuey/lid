@@ -34,7 +34,7 @@ runs a heartbeat watchdog. If the app stops checking in (>90s), the helper resto
 
 ## Architecture
 
-- **`Lid`** — SwiftUI `MenuBarExtra` app (macOS 13+), not sandboxed, `LSUIElement`.
+- **`Lid`** — SwiftUI `MenuBarExtra` app (macOS 15+), not sandboxed, `LSUIElement`.
 - **`LidHelper`** — root LaunchDaemon, registered via `SMAppService`, serves `LidHelperProtocol` over XPC. Embedded at `Contents/MacOS/LidHelper` with its plist in `Contents/Library/LaunchDaemons/`.
 - **`Sources/Shared`** — pure, unit-tested logic: pmset parsers, watchdog, safety evaluator, settings.
 

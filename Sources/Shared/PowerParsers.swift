@@ -19,7 +19,7 @@ public enum PowerParsers {
     }
 }
 
-public struct BatteryInfo: Equatable {
+public struct BatteryInfo: Equatable, Sendable {
     public let percent: Int
     public let onAC: Bool
 

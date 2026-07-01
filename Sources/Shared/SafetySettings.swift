@@ -1,7 +1,7 @@
 import Foundation
 
 /// User-tunable safety preferences for keep-awake.
-public struct SafetySettings: Equatable {
+public struct SafetySettings: Equatable, Sendable {
     public var lowBatteryThreshold: Int
     public var onlyWhileCharging: Bool
     public var pauseOnHighThermal: Bool
@@ -20,7 +20,7 @@ public struct SafetySettings: Equatable {
 }
 
 /// Why keep-awake was (or should be) auto-disabled.
-public enum SafetyReason: Equatable {
+public enum SafetyReason: Equatable, Sendable {
     case highThermal
     case notCharging
     case lowBattery(Int)
