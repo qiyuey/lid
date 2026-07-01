@@ -10,7 +10,7 @@ final class HelperManager {
     /// Helper label / Mach service name, derived from this app's bundle id so the
     /// `.dev` build talks to its own daemon and never the Release one.
     private var helperLabel: String {
-        LidlessHelper.label(appBundleID: Bundle.main.bundleIdentifier ?? "com.nghialuong.lidless")
+        LidHelperIdentity.label(appBundleID: Bundle.main.bundleIdentifier ?? "com.qiyuey.lid")
     }
 
     /// The generated LaunchDaemon plist embedded at `Contents/Library/LaunchDaemons`.
@@ -31,6 +31,19 @@ final class HelperManager {
 
     func unregister() throws { try service.unregister() }
 
+    func unregister(completion: @escaping (Error?) -> Void) {
+        let svc = service
+        connection?.invalidate()
+        connection = nil
+        svc.unregister { [weak self] error in
+            DispatchQueue.main.async {
+                self?.connection?.invalidate()
+                self?.connection = nil
+                completion(error)
+            }
+        }
+    }
+
     /// Rebuild the registration from scratch so launchd picks up the *current*
     /// binary. After an app update the daemon's code signature changes and its
     /// launchd job keeps a stale bundle/requirement reference, so launchd refuses
@@ -43,6 +56,8 @@ final class HelperManager {
     /// `completion` is delivered on the main queue with any registration error.
     func reregister(completion: @escaping (Error?) -> Void) {
         let svc = service
+        connection?.invalidate()
+        connection = nil
         svc.unregister { _ in
             // Give launchd/BTM a moment to drop the old job before re-adding it.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -71,7 +86,7 @@ final class HelperManager {
     private func connect() -> NSXPCConnection {
         if let existing = connection { return existing }
         let conn = NSXPCConnection(machServiceName: helperLabel, options: .privileged)
-        conn.remoteObjectInterface = NSXPCInterface(with: LidlessHelperProtocol.self)
+        conn.remoteObjectInterface = NSXPCInterface(with: LidHelperProtocol.self)
         conn.invalidationHandler = { [weak self] in self?.connection = nil }
         conn.interruptionHandler = { }
         conn.resume()
@@ -79,11 +94,11 @@ final class HelperManager {
         return conn
     }
 
-    private func remote(_ onError: @escaping (String) -> Void) -> LidlessHelperProtocol? {
+    private func remote(_ onError: @escaping (String) -> Void) -> LidHelperProtocol? {
         let proxy = connect().remoteObjectProxyWithErrorHandler { error in
             DispatchQueue.main.async { onError(error.localizedDescription) }
         }
-        return proxy as? LidlessHelperProtocol
+        return proxy as? LidHelperProtocol
     }
 
     func setKeepAwake(_ enabled: Bool, completion: @escaping (Bool, String?) -> Void) {
@@ -102,12 +117,14 @@ final class HelperManager {
         remote({ _ in })?.heartbeat { _ in }
     }
 
-    /// True if the daemon answers an XPC call, false if it can't be reached
-    /// (connection error or no reply within the timeout). Used to detect a
-    /// registered-but-unlaunchable helper after an app update.
+    /// True if the daemon answers with the current protocol version, false if it
+    /// can't be reached (connection error / timeout) or is an older helper.
+    /// Used to detect registered-but-unlaunchable or stale helpers after updates.
     func checkReachable(completion: @escaping (Bool) -> Void) {
         callWithTimeout(timeout: 5, completion: { ok, _ in completion(ok) }) { proxy, done in
-            proxy.version { _ in done(true, nil) }
+            proxy.version { version in
+                done(version.hasPrefix("protocol-\(LidHelperIdentity.protocolVersion) "), nil)
+            }
         }
     }
 
@@ -117,7 +134,7 @@ final class HelperManager {
     /// — a timeout reports failure instead of leaving the UI hung and silent.
     private func callWithTimeout(timeout: TimeInterval = 6,
                                  completion: @escaping (Bool, String?) -> Void,
-                                 _ body: (LidlessHelperProtocol, @escaping (Bool, String?) -> Void) -> Void) {
+                                 _ body: (LidHelperProtocol, @escaping (Bool, String?) -> Void) -> Void) {
         var finished = false
         let finish: (Bool, String?) -> Void = { ok, err in
             DispatchQueue.main.async {

@@ -117,18 +117,63 @@ final class SharedLogicTests: XCTestCase {
         XCTAssertEqual(AutoOff.optionLabel(minutes: 240), "4 hours")
     }
 
+    // MARK: Helper identity
+
+    func testHelperLabelTracksAppBundleID() {
+        XCTAssertEqual(LidHelperIdentity.label(appBundleID: "com.example.App"), "com.example.App.helper")
+        XCTAssertEqual(LidHelperIdentity.appBundleID(helperLabel: "com.example.App.helper"), "com.example.App")
+    }
+
+    func testHelperClientCodeSigningRequirementIncludesBundleAndTeam() {
+        let requirement = LidHelperIdentity.clientCodeSigningRequirement(appBundleID: "com.example.App",
+                                                                     teamID: "TEAM123456")
+        XCTAssertTrue(requirement.contains(#"identifier "com.example.App""#))
+        XCTAssertTrue(requirement.contains(#"certificate leaf[subject.OU] = "TEAM123456""#))
+    }
+
+    func testHelperVersionStringContainsProtocolVersion() {
+        let version = LidHelperIdentity.versionString(
+            bundle: .main,
+            environment: [
+                LidHelperIdentity.appVersionEnvKey: "1.2.3",
+                LidHelperIdentity.appBuildEnvKey: "45"
+            ]
+        )
+        XCTAssertEqual(version, "protocol-\(LidHelperIdentity.protocolVersion) version-1.2.3 build-45")
+    }
+
+    // MARK: ProcessRunner
+
+    func testProcessRunnerCapturesStdout() {
+        let out = ProcessRunner.capture("/bin/echo", ["hello"])
+        XCTAssertEqual(out, "hello\n")
+    }
+
+    func testProcessRunnerReportsNonZeroExit() {
+        let result = ProcessRunner.run("/bin/sh", ["-c", "echo nope >&2; exit 7"])
+        XCTAssertFalse(result.succeeded)
+        XCTAssertEqual(result.exitCode, 7)
+        XCTAssertTrue(result.stderr.contains("nope"))
+    }
+
+    func testProcessRunnerTimesOut() {
+        let result = ProcessRunner.run("/bin/sh", ["-c", "sleep 2"], timeout: 0.1)
+        XCTAssertFalse(result.succeeded)
+        XCTAssertTrue(result.timedOut)
+    }
+
     // MARK: SettingsStore onboarding flag
 
     func testOnboardingDefaultsToIncomplete() {
-        let defaults = UserDefaults(suiteName: "lidless.test.onboarding.default")!
-        defaults.removePersistentDomain(forName: "lidless.test.onboarding.default")
+        let defaults = UserDefaults(suiteName: "lid.test.onboarding.default")!
+        defaults.removePersistentDomain(forName: "lid.test.onboarding.default")
         let store = SettingsStore(defaults: defaults)
         XCTAssertFalse(store.loadOnboardingComplete())
     }
 
     func testOnboardingCompletePersists() {
-        let defaults = UserDefaults(suiteName: "lidless.test.onboarding.persist")!
-        defaults.removePersistentDomain(forName: "lidless.test.onboarding.persist")
+        let defaults = UserDefaults(suiteName: "lid.test.onboarding.persist")!
+        defaults.removePersistentDomain(forName: "lid.test.onboarding.persist")
         let store = SettingsStore(defaults: defaults)
         store.saveOnboardingComplete(true)
         XCTAssertTrue(SettingsStore(defaults: defaults).loadOnboardingComplete())

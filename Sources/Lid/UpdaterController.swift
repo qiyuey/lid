@@ -6,7 +6,7 @@ import SwiftUI
 /// bits of state SwiftUI needs to drive the "Check for Updates…" menu item and the
 /// Settings toggle.
 ///
-/// Lidless is an `LSUIElement` menu-bar app with no app menu, so Sparkle's
+/// Lid is an `LSUIElement` menu-bar app with no app menu, so Sparkle's
 /// documented `CommandGroup` integration doesn't surface. Instead we publish
 /// `canCheckForUpdates` (to enable/disable the menu item) and proxy
 /// `automaticallyChecksForUpdates` (Sparkle persists this itself in UserDefaults,

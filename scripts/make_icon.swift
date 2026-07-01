@@ -1,7 +1,7 @@
 #!/usr/bin/env swift
-// Generates a 1024x1024 app icon PNG for Lidless using CoreGraphics (headless-safe,
-// no window server needed). The mark is an open eye — "Lidless" = the lid that
-// never closes. Run: swift scripts/make_icon.swift Resources/icon_1024.png
+// Generates a 1024x1024 app icon PNG for Lid using CoreGraphics (headless-safe,
+// no window server needed). The mark is an open eye for a Mac that keeps work
+// running with the lid closed. Run: swift scripts/make_icon.swift Resources/icon_1024.png
 import Foundation
 import CoreGraphics
 import ImageIO

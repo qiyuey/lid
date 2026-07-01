@@ -1,3 +1,13 @@
+Fork licensing notice
+=====================
+
+This repository includes upstream MIT-licensed work by Nghia Luong. The upstream
+copyright and permission notice below must be preserved in all substantial
+copies of the software.
+
+Fork-specific changes and distributions by qiyuey are additionally made
+available under the Anti 996 License v1.0; see LICENSE-ANTI-996.
+
 MIT License
 
 Copyright (c) 2026 Nghia Luong

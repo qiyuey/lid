@@ -23,23 +23,14 @@ struct PowerManager {
         let value = enabled ? "1" : "0"
         let script = "do shell script \"/usr/bin/pmset -a disablesleep \(value)\" with administrator privileges"
 
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        proc.arguments = ["-e", script]
-        let errPipe = Pipe()
-        proc.standardError = errPipe
-        proc.standardOutput = Pipe()
-
-        try proc.run()
-        proc.waitUntilExit()
-
-        if proc.terminationStatus != 0 {
-            let data = errPipe.fileHandleForReading.readDataToEndOfFile()
-            let msg = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? "Unknown error"
+        let result = ProcessRunner.run("/usr/bin/osascript", ["-e", script], timeout: 30)
+        if !result.succeeded {
+            let msg = result.timedOut
+                ? "Authorization timed out."
+                : result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             throw NSError(
-                domain: "Lidless.PowerManager",
-                code: Int(proc.terminationStatus),
+                domain: "Lid.PowerManager",
+                code: Int(result.exitCode),
                 userInfo: [NSLocalizedDescriptionKey: msg.isEmpty ? "Authorization cancelled." : msg]
             )
         }

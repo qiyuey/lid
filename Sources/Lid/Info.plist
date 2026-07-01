@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Lidless</string>
+	<string>Lid</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIconName</key>
@@ -15,11 +15,11 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Lidless</string>
+	<string>Lid</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.1</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSMinimumSystemVersion</key>
@@ -27,13 +27,13 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 Nghia Luong</string>
+	<string>© 2026 qiyuey. Portions © 2026 Nghia Luong.</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/nghialuong/Lidless/main/docs/appcast.xml</string>
+	<string>https://raw.githubusercontent.com/qiyuey/lid/main/docs/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>pmOUhSI4qLDIbgndphAMYGc/oZJIk9Nw9KdEcmJBSOY=</string>
+	<string>dckHUqDIcxNZCpJR5HErR90BA2jfh4n9VKz1Ne7kRF4=</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 </dict>

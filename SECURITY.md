@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Lidless is a small project; security fixes land on the latest `main` and the most
+Lid is a small project; security fixes land on the latest `main` and the most
 recent release. Please test against the latest code before reporting.
 
 ## Reporting a vulnerability
@@ -18,12 +18,12 @@ I'll acknowledge as soon as I can and keep you posted on a fix.
 
 ## Security-relevant surface
 
-Lidless is not sandboxed and installs a **privileged background helper** to do its job,
+Lid is not sandboxed and installs a **privileged background helper** to do its job,
 so a few areas matter more than usual:
 
-- **Root LaunchDaemon** (`LidlessHelper`) registered via `SMAppService`. It runs as
+- **Root LaunchDaemon** (`LidHelper`) registered via `SMAppService`. It runs as
   root and toggles the macOS `SleepDisabled` flag (`IOPMrootDomain`).
-- **XPC interface** (`LidlessHelperProtocol`) between the menu-bar app and the helper —
+- **XPC interface** (`LidHelperProtocol`) between the menu-bar app and the helper —
   the only channel the app uses to change power state.
 - **Heartbeat watchdog**: if the app stops checking in (>90s), the helper restores
   normal sleep on its own, so the Mac can't get stuck awake after a crash.

@@ -1,14 +1,16 @@
-# Lidless
+# Lid
 
-[![Downloads](https://img.shields.io/github/downloads/nghialuong/Lidless/total)](https://github.com/nghialuong/Lidless/releases)
+[![Downloads](https://img.shields.io/github/downloads/qiyuey/lid/total)](https://github.com/qiyuey/lid/releases)
+[![License](https://img.shields.io/badge/license-MIT%20%2B%20Anti--996-blue)](LICENSE)
 
 A tiny macOS menu-bar app that keeps your Mac running **even with the lid closed** —
 so coding agents (Claude Code, Codex, etc.) keep working while you move around.
 
-> Open source under the [MIT License](LICENSE).
+> Lid is qiyuey's personal build for local use and experiments. Upstream
+> copyright and the original MIT License are preserved where applicable.
 
 <p align="center">
-  <img src="docs/menu-popover.png" alt="Lidless menu bar popover — keep-awake toggle, helper status, battery, and safety controls" width="420">
+  <img src="docs/menu-popover.png" alt="Lid menu bar popover — keep-awake toggle, helper status, battery, and safety controls" width="420">
 </p>
 
 ## Features
@@ -32,8 +34,8 @@ runs a heartbeat watchdog. If the app stops checking in (>90s), the helper resto
 
 ## Architecture
 
-- **`Lidless`** — SwiftUI `MenuBarExtra` app (macOS 13+), not sandboxed, `LSUIElement`.
-- **`LidlessHelper`** — root LaunchDaemon, registered via `SMAppService`, serves `LidlessHelperProtocol` over XPC. Embedded at `Contents/MacOS/LidlessHelper` with its plist in `Contents/Library/LaunchDaemons/`.
+- **`Lid`** — SwiftUI `MenuBarExtra` app (macOS 13+), not sandboxed, `LSUIElement`.
+- **`LidHelper`** — root LaunchDaemon, registered via `SMAppService`, serves `LidHelperProtocol` over XPC. Embedded at `Contents/MacOS/LidHelper` with its plist in `Contents/Library/LaunchDaemons/`.
 - **`Sources/Shared`** — pure, unit-tested logic: pmset parsers, watchdog, safety evaluator, settings.
 
 ## Build (no Xcode GUI needed)
@@ -42,7 +44,7 @@ Requires the Xcode command-line tools + [XcodeGen](https://github.com/yonaskolb/
 
 ```bash
 xcodegen generate
-xcodebuild test -scheme Lidless-CI -destination 'platform=macOS' | xcbeautify
+xcodebuild test -scheme Lid-CI -destination 'platform=macOS' | xcbeautify
 ```
 
 The `.xcodeproj` is gitignored — `project.yml` is the source of truth.
@@ -74,7 +76,7 @@ Publishes the DMG to a GitHub Release and writes the feed to `docs/appcast.xml`
 
 ## Milestones
 
-- **M0** — spike, verified lid-closed on real Apple Silicon (`scripts/lidless.sh`). ✅
+- **M0** — spike, verified lid-closed on real Apple Silicon (`scripts/lid.sh`). ✅
 - **M1 / M1.5** — menu-bar app + privileged helper + XPC + watchdog. ✅
 - **M2** — safety preferences (thermal / charging / battery) + persistence. ✅
 - **App complete** — icon, launch-at-login, onboarding, About, release pipeline. ✅
@@ -91,4 +93,6 @@ To report a security issue, see [SECURITY.md](SECURITY.md).
 
 ## License
 
-[MIT](LICENSE) © 2026 Nghia Luong
+This project includes MIT-licensed upstream work © 2026 Nghia Luong. qiyuey's
+changes and distribution are additionally made available under the
+[Anti 996 License v1.0](LICENSE-ANTI-996) where legally applicable.

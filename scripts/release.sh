@@ -1,29 +1,30 @@
 #!/bin/bash
-# Lidless release pipeline: archive → Developer ID export → notarize → DMG →
+# Lid release pipeline: archive → Developer ID export → notarize → DMG →
 # Sparkle appcast (EdDSA-signed) → publish to GitHub Releases + Pages.
 # Run on a Mac that has the Developer ID Application certificate, a notarytool
 # keychain profile, and the Sparkle EdDSA private key in the login keychain.
 # Headless CI can't do this (no certs / no signing key), so it's a manual step.
 #
 # Prereqs (one-time):
-#   xcrun notarytool store-credentials lidless-notary \
-#       --apple-id "you@example.com" --team-id TAFDRXJZSR --password <app-specific-pw>
+#   xcrun notarytool store-credentials lid-notary \
+#       --apple-id "you@example.com" --team-id 7T4ZKYBB6Z --password <app-specific-pw>
 #   # Sparkle signing key (prints the base64 public key for Info.plist SUPublicEDKey):
-#   "$(./scripts/release.sh --print-sparkle-tool generate_keys)"   # or run generate_keys directly
+#   "$(./scripts/release.sh --print-sparkle-tool generate_keys)" --account qiyuey-lid
 #
 # Usage:
-#   ./scripts/release.sh                  # uses keychain profile "lidless-notary"
+#   ./scripts/release.sh                  # uses keychain profile "lid-notary"
+#   RELEASE_VERSION=2026.7.2 ./scripts/release.sh
 #   NOTARY_PROFILE=myprofile ./scripts/release.sh
 #   PUBLISH=0 ./scripts/release.sh        # build appcast locally but skip gh/Pages publish
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-SCHEME="Lidless"
-APP_NAME="Lidless"
+SCHEME="Lid"
+APP_NAME="Lid"
 BUILD="build/release"
 ARCHIVE="$BUILD/$APP_NAME.xcarchive"
 EXPORT="$BUILD/export"
-NOTARY_PROFILE="${NOTARY_PROFILE:-lidless-notary}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-lid-notary}"
 PUBLISH="${PUBLISH:-1}"
 
 # Signing workspace: generate_appcast scans this directory and (re)writes
@@ -32,10 +33,12 @@ PUBLISH="${PUBLISH:-1}"
 UPDATES_DIR="updates"
 APPCAST="$UPDATES_DIR/appcast.xml"
 # Where GitHub Pages serves the feed from. docs/ on the default branch is served
-# at https://<user>.github.io/<repo>/, matching SUFeedURL .../Lidless/appcast.xml.
+# at https://<user>.github.io/<repo>/, matching the app's SUFeedURL.
 PAGES_APPCAST="docs/appcast.xml"
 # Stable base URL the appcast enclosures point at (GitHub Release asset downloads).
-DOWNLOAD_URL_PREFIX="${DOWNLOAD_URL_PREFIX:-https://github.com/nghialuong/Lidless/releases/latest/download}"
+DOWNLOAD_URL_PREFIX="${DOWNLOAD_URL_PREFIX:-https://github.com/qiyuey/lid/releases/latest/download}"
+# Keychain account holding this fork's Sparkle EdDSA private key.
+SPARKLE_ACCOUNT="${SPARKLE_ACCOUNT:-qiyuey-lid}"
 
 command -v xcodegen >/dev/null || { echo "need xcodegen (brew install xcodegen)"; exit 1; }
 
@@ -57,32 +60,70 @@ sparkle_tool() {
 # Escape hatch: `./scripts/release.sh --print-sparkle-tool generate_keys`
 if [ "${1:-}" = "--print-sparkle-tool" ]; then sparkle_tool "${2:?tool name}"; exit 0; fi
 
-# Monotonic build number for CFBundleVersion. Sparkle orders releases by it, so it
-# must strictly increase across releases. Commit count is monotonic on a linear
-# history; override with BUILD_NUMBER=… if your history isn't linear.
-BUILD_NUMBER="${BUILD_NUMBER:-$(git rev-list --count HEAD)}"
+extract_versions() {
+    [ -f "$PAGES_APPCAST" ] || return 0
+    /usr/bin/sed -n \
+        -e 's/.*sparkle:version="\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/p' \
+        -e 's/.*<sparkle:version>\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)<\/sparkle:version>.*/\1/p' \
+        "$PAGES_APPCAST"
+}
 
-# Guard: refuse to ship a build number that isn't greater than the last shipped
-# one (read from the committed, published feed — the durable source of truth).
-if [ -f "$PAGES_APPCAST" ]; then
-    LAST=$(/usr/bin/sed -n 's/.*sparkle:version="\([0-9][0-9]*\)".*/\1/p' "$PAGES_APPCAST" | sort -n | tail -n1)
-    if [ -n "${LAST:-}" ] && [ "$BUILD_NUMBER" -le "$LAST" ]; then
-        echo "✗ BUILD_NUMBER ($BUILD_NUMBER) must be > last shipped sparkle:version ($LAST). Override with BUILD_NUMBER=…" >&2
-        exit 1
-    fi
+next_calendar_version() {
+    local year month prefix last_patch
+    year="$(date +%Y)"
+    month="$(date +%-m)"
+    prefix="$year.$month."
+    last_patch="$(extract_versions | awk -F. -v y="$year" -v m="$month" '
+        $1 == y && $2 == m && $3 + 0 > max { max = $3 + 0 }
+        END { print max + 0 }
+    ')"
+    echo "$prefix$((last_patch + 1))"
+}
+
+version_gt() {
+    awk -F. -v a="$1" -v b="$2" '
+        BEGIN {
+            split(a, av, "."); split(b, bv, ".");
+            for (i = 1; i <= 3; i++) {
+                ai = av[i] + 0; bi = bv[i] + 0;
+                if (ai > bi) exit 0;
+                if (ai < bi) exit 1;
+            }
+            exit 1;
+        }
+    '
+}
+
+# Calendar version used for both CFBundleShortVersionString and CFBundleVersion.
+# Format: YYYY.M.N, where N increments for every release in the same month.
+RELEASE_VERSION="${RELEASE_VERSION:-$(next_calendar_version)}"
+
+# Guard: Sparkle requires an incrementing CFBundleVersion. Read committed appcast
+# versions as the durable source of truth and refuse non-incrementing releases.
+LAST_VERSION="$(extract_versions | awk -F. '
+    function gt(a1,a2,a3,b1,b2,b3) {
+        return (a1>b1 || (a1==b1 && (a2>b2 || (a2==b2 && a3>b3))))
+    }
+    gt($1+0,$2+0,$3+0,y,m,p) { y=$1+0; m=$2+0; p=$3+0 }
+    END { if (y) printf "%d.%d.%d\n", y, m, p }
+')"
+if [ -n "${LAST_VERSION:-}" ] && ! version_gt "$RELEASE_VERSION" "$LAST_VERSION"; then
+    echo "✗ RELEASE_VERSION ($RELEASE_VERSION) must be > last shipped version ($LAST_VERSION)." >&2
+    exit 1
 fi
 
 echo "→ [1/7] generate project"
 xcodegen generate
 
-echo "→ [2/7] archive (Developer ID signed, build $BUILD_NUMBER)"
+echo "→ [2/7] archive (Developer ID signed, version $RELEASE_VERSION)"
 rm -rf "$BUILD"
 xcodebuild archive \
     -scheme "$SCHEME" \
     -destination 'generic/platform=macOS' \
     -archivePath "$ARCHIVE" \
     -configuration Release \
-    CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+    MARKETING_VERSION="$RELEASE_VERSION" \
+    CURRENT_PROJECT_VERSION="$RELEASE_VERSION"
 
 echo "→ [3/7] export"
 xcodebuild -exportArchive \
@@ -123,19 +164,19 @@ mkdir -p "$UPDATES_DIR"
 cp "$DMG" "$UPDATES_DIR/"
 # Sign the archive with the keychain private key and write a fresh appcast.
 # --download-url-prefix points the enclosure at the GitHub Release asset.
-"$GENERATE_APPCAST" --download-url-prefix "$DOWNLOAD_URL_PREFIX/" "$UPDATES_DIR"
+"$GENERATE_APPCAST" --account "$SPARKLE_ACCOUNT" --download-url-prefix "$DOWNLOAD_URL_PREFIX/" "$UPDATES_DIR"
 mkdir -p "$(dirname "$PAGES_APPCAST")"
 cp "$APPCAST" "$PAGES_APPCAST"
 
-echo "✓ Released: $DMG (v$VERSION, build $BUILD_NUMBER) — notarized + stapled; feed copied to $PAGES_APPCAST."
+echo "✓ Released: $DMG (v$VERSION) — notarized + stapled; feed copied to $PAGES_APPCAST."
 
 if [ "$PUBLISH" = "1" ]; then
     command -v gh >/dev/null || { echo "skip publish: need gh (brew install gh)"; exit 0; }
     TAG="v${VERSION}"
     echo "→ publish: GitHub Release $TAG (DMG asset) + appcast on Pages"
     # Create the release if absent, then upload the DMG (clobber to allow re-runs).
-    gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes "Lidless $VERSION (build $BUILD_NUMBER)"
+    gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes "Lid $VERSION"
     gh release upload "$TAG" "$DMG" --clobber
     echo "→ commit + push the published feed so GitHub Pages serves it at SUFeedURL:"
-    echo "  git add $PAGES_APPCAST && git commit -m \"appcast: $VERSION (build $BUILD_NUMBER)\" && git push"
+    echo "  git add $PAGES_APPCAST && git commit -m \"appcast: $VERSION\" && git push"
 fi

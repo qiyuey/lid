@@ -15,14 +15,14 @@ package pinned in `project.yml`.
 | `generate_keys`  | One-time: create/print the developer signing key. |
 | `BinaryDelta`    | Builds delta updates (invoked by `generate_appcast`). |
 
-## Signing key (one-time, already done)
+## Signing key (one-time per fork)
 
 The EdDSA **private** key lives in the login keychain (created/surfaced by
-`generate_keys`) and is shared across this developer's Sparkle apps — it is never
-committed. The matching **public** key is in `project.yml` (`SUPublicEDKey`) and
-the generated `Info.plist`.
+`generate_keys`) under the account `qiyuey-lid` and is never committed. The
+matching **public** key is in `project.yml` (`SUPublicEDKey`) and the generated
+`Info.plist`. `scripts/release.sh` uses the same account via `SPARKLE_ACCOUNT`.
 
 To back up the private key offsite (recommended — it's erased if the keychain is
-lost): `./scripts/sparkle/bin/generate_keys -x sparkle_private_key.pem`, then
-store that file somewhere safe and delete it from the working tree. Do **not**
-commit it.
+lost): `./scripts/sparkle/bin/generate_keys --account qiyuey-lid -x
+sparkle_private_key.pem`, then store that file somewhere safe and delete it from
+the working tree. Do **not** commit it.

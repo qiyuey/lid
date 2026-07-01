@@ -56,14 +56,14 @@ final class SafetyEvaluatorTests: XCTestCase {
     // MARK: SettingsStore
 
     func testSettingsStoreDefaultsWhenUnseeded() {
-        let suite = "test.lidless.unseeded"
+        let suite = "test.lid.unseeded"
         let d = UserDefaults(suiteName: suite)!
         d.removePersistentDomain(forName: suite)
         XCTAssertEqual(SettingsStore(defaults: d).load(), .default)
     }
 
     func testSettingsStoreRoundTrip() {
-        let suite = "test.lidless.roundtrip"
+        let suite = "test.lid.roundtrip"
         let d = UserDefaults(suiteName: suite)!
         d.removePersistentDomain(forName: suite)
         let store = SettingsStore(defaults: d)

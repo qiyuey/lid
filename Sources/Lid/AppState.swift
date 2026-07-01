@@ -25,11 +25,11 @@ final class AppState: ObservableObject {
 
     /// Auto-off timer: minutes after which keep-awake turns itself off
     /// (`0` = never). Persisted.
-    @Published var autoOffMinutes = 0
+    var autoOffMinutes: Int { autoOff.minutes }
     /// When the active auto-off timer will fire; nil when not counting down.
-    @Published var autoOffDeadline: Date?
+    var autoOffDeadline: Date? { autoOff.deadline }
     /// Human countdown (e.g. `1:05:09`) shown while a timer is active.
-    @Published var autoOffRemaining = ""
+    var autoOffRemaining: String { autoOff.remaining }
 
     /// Whether the user has finished first-run onboarding (persisted).
     @Published var onboardingComplete = false
@@ -39,34 +39,40 @@ final class AppState: ObservableObject {
     private let battery = BatteryMonitor()
     private let store = SettingsStore()
     private let loginItem = LoginItemManager()
+    private lazy var safety = SafetyMonitor(battery: battery)
+    private lazy var autoOff = AutoOffController(store: store)
+    private lazy var helperLifecycle = HelperLifecycleController(helper: helper, store: store)
     private lazy var onboarding = OnboardingController(state: self)
 
     /// Marketing version shown in the menu.
     var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
     }
-    private var batteryTimer: Timer?
+    private var helperStatusTimer: Timer?
     private var heartbeatTimer: Timer?
-    private var autoOffTimer: Timer?
 
-    /// Last-known "helper is usable" value, so we can detect it flipping on at
-    /// runtime (right after the user approves it) and prompt a restart.
-    private var helperWasUsable = false
     /// True while the onboarding window is open and not yet completed.
     private var onboardingActive = false
     private var didBecomeActiveObserver: NSObjectProtocol?
+    private var thermalObserver: NSObjectProtocol?
 
     init() {
         settings = store.load()
-        autoOffMinutes = store.loadAutoOffMinutes()
         onboardingComplete = store.loadOnboardingComplete()
+        configureAutoOff()
         launchAtLogin = loginItem.isEnabled
         refreshHelperStatus()
         refreshHelperRegistrationIfUpdated()
-        helperWasUsable = usingHelper
+        helperLifecycle.captureUsableBaseline()
         refreshState()
         refreshBattery()
-        batteryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        battery.start { [weak self] info in
+            Task { @MainActor in
+                self?.applyBattery(info)
+                self?.evaluateSafety()
+            }
+        }
+        helperStatusTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
         // Re-check the helper whenever the app comes forward — e.g. when the user
@@ -76,6 +82,11 @@ final class AppState: ObservableObject {
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.recheckHelper() }
+        }
+        thermalObserver = NotificationCenter.default.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.evaluateSafety() }
         }
         // First launch shows onboarding once (persisted so closing it early won't
         // re-nag). A relaunch triggered mid-onboarding resumes the flow instead.
@@ -90,8 +101,13 @@ final class AppState: ObservableObject {
     }
 
     deinit {
+        helperStatusTimer?.invalidate()
+        heartbeatTimer?.invalidate()
         if let didBecomeActiveObserver {
             NotificationCenter.default.removeObserver(didBecomeActiveObserver)
+        }
+        if let thermalObserver {
+            NotificationCenter.default.removeObserver(thermalObserver)
         }
     }
 
@@ -123,9 +139,7 @@ final class AppState: ObservableObject {
     /// Change the auto-off duration. Re-arms (or cancels) the live timer when
     /// keep-awake is currently on.
     func setAutoOffMinutes(_ minutes: Int) {
-        autoOffMinutes = minutes
-        store.saveAutoOffMinutes(minutes)
-        if isEnabled { armAutoOff() } else { cancelAutoOff() }
+        autoOff.setMinutes(minutes, isEnabled: isEnabled)
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
@@ -138,18 +152,10 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func thermalSerious() -> Bool {
-        let state = ProcessInfo.processInfo.thermalState
-        return state == .serious || state == .critical
-    }
-
     /// Auto-disable keep-awake if current conditions violate the safety policy.
     func evaluateSafety() {
         guard isEnabled else { return }
-        let info = battery.read()
-        if let reason = SafetyEvaluator.reasonToDisable(battery: info,
-                                                        thermalSerious: thermalSerious(),
-                                                        settings: settings) {
+        if let reason = safety.reasonToDisable(settings: settings) {
             // Pass the message through so it survives the async helper callback
             // (which would otherwise clear lastError on success).
             setEnabled(false, note: reason.message)
@@ -159,18 +165,8 @@ final class AppState: ObservableObject {
     // MARK: Helper lifecycle
 
     func refreshHelperStatus() {
-        helperInstalled = helper.isEnabled
-        helperNeedsApproval = helper.requiresApproval
-        usingHelper = helperInstalled
-    }
-
-    /// The app's current build number (`CFBundleVersion`).
-    private var currentBuild: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
-    }
-
-    private func storeCurrentHelperBuild() {
-        store.saveLastHelperBuild(currentBuild)
+        helperLifecycle.refreshStatus()
+        syncHelperStatus()
     }
 
     /// After an app update the helper binary is re-signed and its launchd job can
@@ -180,13 +176,8 @@ final class AppState: ObservableObject {
     /// rebuild its registration (which may require re-approval). Healthy updates
     /// are left untouched, so they don't needlessly prompt for approval.
     private func refreshHelperRegistrationIfUpdated() {
-        guard !currentBuild.isEmpty else { return }
-        guard store.loadLastHelperBuild() != currentBuild else { return }
-        storeCurrentHelperBuild()
-        guard helper.isEnabled else { return }
-        helper.checkReachable { [weak self] reachable in
-            guard let self, !reachable else { return }
-            self.repairHelper()
+        helperLifecycle.refreshRegistrationIfUpdated { [weak self] in
+            self?.repairHelper()
         }
     }
 
@@ -194,10 +185,9 @@ final class AppState: ObservableObject {
     /// the app was running), pick up its keep-awake state and prompt a restart so
     /// the app fully switches onto the privileged helper.
     func recheckHelper() {
-        let wasUsable = helperWasUsable
-        refreshHelperStatus()
-        helperWasUsable = usingHelper
-        guard !wasUsable, usingHelper else { return }
+        let becameUsable = helperLifecycle.recheckBecameUsable()
+        syncHelperStatus()
+        guard becameUsable else { return }
         refreshState()
         promptRestartAfterHelperEnabled()
     }
@@ -212,7 +202,7 @@ final class AppState: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "Background helper enabled"
-        alert.informativeText = "Restart Lidless to finish connecting to the background helper."
+        alert.informativeText = "Restart Lid to finish connecting to the background helper."
         alert.addButton(withTitle: "Restart Now")
         alert.addButton(withTitle: "Later")
         if alert.runModal() == .alertFirstButtonReturn {
@@ -234,23 +224,22 @@ final class AppState: ObservableObject {
         // If the daemon is already registered and just awaiting approval, don't
         // re-register (that throws once pending and would swallow the open) —
         // just take the user to Login Items.
-        if helper.requiresApproval {
+        refreshHelperStatus()
+        if helperLifecycle.needsApproval {
             openLoginItems()
             return
         }
         do {
-            try helper.register()
-            let wasUsable = helperWasUsable
-            refreshHelperStatus()
-            helperWasUsable = usingHelper
-            if helper.requiresApproval {
-                lastError = "Approve Lidless in System Settings ▸ Login Items."
+            let becameUsable = try helperLifecycle.register()
+            syncHelperStatus()
+            if helperLifecycle.needsApproval {
+                lastError = "Approve Lid in System Settings ▸ Login Items."
                 helper.openLoginItemsSettings()
             } else {
                 lastError = nil
                 // Rare: registered and immediately usable (already approved). Treat
                 // it as the same enable transition the approval path would hit.
-                if !wasUsable, usingHelper {
+                if becameUsable {
                     refreshState()
                     promptRestartAfterHelperEnabled()
                 }
@@ -264,9 +253,61 @@ final class AppState: ObservableObject {
     /// Kept separate from `installHelper()` so re-registration can never swallow
     /// the open.
     func openLoginItems() {
-        lastError = "Approve Lidless in System Settings ▸ Login Items."
+        lastError = "Approve Lid in System Settings ▸ Login Items."
         helper.openLoginItemsSettings()
         refreshHelperStatus()
+    }
+
+    func uninstallHelper() {
+        refreshHelperStatus()
+        guard helperLifecycle.installed || helperLifecycle.needsApproval else {
+            lastError = nil
+            return
+        }
+        guard confirmUninstallHelper() else { return }
+
+        restoreSleepBeforeHelperRemoval { [weak self] restored in
+            guard let self, restored else { return }
+            self.helperLifecycle.unregister { [weak self] error in
+                guard let self else { return }
+                self.syncHelperStatus()
+                if let error {
+                    self.lastError = error.localizedDescription
+                    return
+                }
+                self.lastError = "Background helper removed. Lid will use the administrator prompt until you install it again."
+                self.refreshState()
+                self.manageHeartbeat()
+            }
+        }
+    }
+
+    private func restoreSleepBeforeHelperRemoval(completion: @escaping (Bool) -> Void) {
+        guard isEnabled else {
+            completion(true)
+            return
+        }
+
+        setEnabled(false) { [weak self] ok in
+            guard let self else { return }
+            if ok {
+                completion(true)
+                return
+            }
+
+            do {
+                try self.fallback.setSleepDisabled(false)
+                self.isEnabled = false
+                self.lastError = nil
+                self.manageHeartbeat()
+                self.updateAutoOff(for: false)
+                completion(true)
+            } catch {
+                self.lastError = error.localizedDescription
+                self.presentHelperUninstallRestoreFailureAlert(message: error.localizedDescription)
+                completion(false)
+            }
+        }
     }
 
     // MARK: State
@@ -288,17 +329,18 @@ final class AppState: ObservableObject {
     /// any prior message. When `userInitiated` is true (the user flipped the
     /// toggle), a failure or policy refusal also pops a blocking alert so it
     /// can't go unnoticed; background callers leave it false to stay quiet.
-    func setEnabled(_ target: Bool, note: String? = nil, userInitiated: Bool = false) {
+    func setEnabled(_ target: Bool,
+                    note: String? = nil,
+                    userInitiated: Bool = false,
+                    completion: ((Bool) -> Void)? = nil) {
         // Refuse to enable if it would immediately violate the safety policy.
         if target {
-            let info = battery.read()
-            if let blocker = SafetyEvaluator.reasonToDisable(battery: info,
-                                                             thermalSerious: thermalSerious(),
-                                                             settings: settings) {
+            if let blocker = safety.reasonToDisable(settings: settings) {
                 lastError = blocker.message
                 if userInitiated {
                     presentFailureAlert(target: target, message: blocker.blockedMessage)
                 }
+                completion?(false)
                 return
             }
         }
@@ -311,6 +353,7 @@ final class AppState: ObservableObject {
                     self.lastError = resultMessage
                     self.manageHeartbeat()
                     self.updateAutoOff(for: target)
+                    completion?(true)
                 } else {
                     // The helper can fail without a message (e.g. a dropped XPC
                     // reply, or the daemon failing to launch after an update);
@@ -319,6 +362,7 @@ final class AppState: ObservableObject {
                     self.lastError = message
                     if userInitiated { self.presentHelperFailureAlert(message: message) }
                     self.refreshState()
+                    completion?(false)
                 }
             }
         } else {
@@ -327,12 +371,66 @@ final class AppState: ObservableObject {
                 isEnabled = target
                 lastError = resultMessage
                 updateAutoOff(for: target)
+                completion?(true)
             } catch {
                 lastError = error.localizedDescription
                 if userInitiated { presentFailureAlert(target: target, message: error.localizedDescription) }
                 isEnabled = fallback.isSleepDisabled()
+                completion?(false)
             }
         }
+    }
+
+    /// User-requested quit: clear the keep-awake flag first when it is active,
+    /// then exit. If restore fails, make the user choose whether to quit anyway.
+    func quit() {
+        guard isEnabled else {
+            NSApp.terminate(nil)
+            return
+        }
+
+        setEnabled(false) { [weak self] ok in
+            guard let self else { return }
+            if ok {
+                NSApp.terminate(nil)
+            } else {
+                self.presentQuitAfterRestoreFailureAlert()
+            }
+        }
+    }
+
+    private func presentQuitAfterRestoreFailureAlert() {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Couldn’t turn keep-awake off"
+        alert.informativeText = "Lid could not restore normal sleep before quitting. Quit anyway and let the background watchdog restore it shortly?"
+        alert.addButton(withTitle: "Quit Anyway")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSApp.terminate(nil)
+        }
+    }
+
+    private func confirmUninstallHelper() -> Bool {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Remove background helper?"
+        alert.informativeText = "Lid will restore normal sleep first, then remove its privileged helper. Future toggles will use the administrator prompt until you install the helper again."
+        alert.addButton(withTitle: "Remove Helper")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    private func presentHelperUninstallRestoreFailureAlert(message: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Couldn’t remove background helper"
+        alert.informativeText = "Lid could not restore normal sleep, so the helper was left installed.\n\n\(message)"
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     /// Pop a blocking alert when a user-initiated toggle can't be applied, so the
@@ -369,19 +467,24 @@ final class AppState: ObservableObject {
     /// the outcome. Used both automatically (after a detected app update) and from
     /// the failure alert's "Reinstall Helper" action.
     func repairHelper() {
-        helper.reregister { [weak self] error in
+        helperLifecycle.repair { [weak self] error in
             guard let self else { return }
-            self.refreshHelperStatus()
-            self.storeCurrentHelperBuild()
+            self.syncHelperStatus()
             if let error {
                 self.lastError = error.localizedDescription
-            } else if self.helper.requiresApproval {
-                self.lastError = "Approve Lidless in System Settings ▸ Login Items, then try the switch again."
+            } else if self.helperLifecycle.needsApproval {
+                self.lastError = "Approve Lid in System Settings ▸ Login Items, then try the switch again."
                 self.helper.openLoginItemsSettings()
             } else {
                 self.lastError = "Background helper reinstalled — try the switch again."
             }
         }
+    }
+
+    private func syncHelperStatus() {
+        helperInstalled = helperLifecycle.installed
+        helperNeedsApproval = helperLifecycle.needsApproval
+        usingHelper = helperLifecycle.usingHelper
     }
 
     // MARK: Heartbeat (keeps the helper watchdog satisfied)
@@ -398,45 +501,18 @@ final class AppState: ObservableObject {
 
     // MARK: Auto-off timer
 
+    private func configureAutoOff() {
+        autoOff.onChange = { [weak self] in
+            Task { @MainActor in self?.objectWillChange.send() }
+        }
+        autoOff.onExpired = { [weak self] note in
+            Task { @MainActor in self?.setEnabled(false, note: note) }
+        }
+    }
+
     /// Arm when keep-awake turns on, cancel when it turns off.
     private func updateAutoOff(for enabled: Bool) {
-        if enabled { armAutoOff() } else { cancelAutoOff() }
-    }
-
-    private func armAutoOff() {
-        cancelAutoOff()
-        guard isEnabled, autoOffMinutes > 0 else { return }
-        let deadline = AutoOff.deadline(from: Date(), minutes: autoOffMinutes)
-        autoOffDeadline = deadline
-        refreshAutoOffRemaining()
-        // One repeating timer drives both the countdown label and the firing,
-        // and only runs while a timer is actually armed.
-        autoOffTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.autoOffTick() }
-        }
-    }
-
-    private func cancelAutoOff() {
-        autoOffTimer?.invalidate()
-        autoOffTimer = nil
-        autoOffDeadline = nil
-        autoOffRemaining = ""
-    }
-
-    private func autoOffTick() {
-        guard let deadline = autoOffDeadline else { return }
-        if AutoOff.isExpired(deadline: deadline, now: Date()) {
-            let minutes = autoOffMinutes
-            cancelAutoOff()
-            setEnabled(false, note: "Auto-off: \(AutoOff.optionLabel(minutes: minutes)) elapsed.")
-        } else {
-            refreshAutoOffRemaining()
-        }
-    }
-
-    private func refreshAutoOffRemaining() {
-        guard let deadline = autoOffDeadline else { autoOffRemaining = ""; return }
-        autoOffRemaining = AutoOff.formatCountdown(AutoOff.remaining(deadline: deadline, now: Date()))
+        autoOff.update(for: enabled)
     }
 
     // MARK: Battery + safety guard
@@ -445,12 +521,13 @@ final class AppState: ObservableObject {
         // Backstop for the didBecomeActive observer: catch a helper approval even
         // if the app never lost/regained active state.
         recheckHelper()
-        refreshBattery()
-        evaluateSafety()
     }
 
     func refreshBattery() {
-        let info = battery.read()
+        applyBattery(battery.read())
+    }
+
+    private func applyBattery(_ info: BatteryInfo) {
         batteryPercent = info.percent
         batteryOnAC = info.onAC
         batteryDescription = "\(info.source) · \(info.percent)%"

@@ -1,16 +1,16 @@
 #!/bin/bash
-# Lidless — M0 spike
+# Lid — M0 spike
 # Keep a MacBook (Apple Silicon) running EVEN WITH THE LID CLOSED so coding
 # agents keep working. Mechanism: set the SleepDisabled flag in IOPMrootDomain
 # via `pmset -a disablesleep`. This shell version is the spike; the real app
 # calls the API directly through a root helper.
 #
 # USAGE (run on the MacBook, not the Mac mini — the mini has no lid):
-#   chmod +x lidless.sh
-#   ./lidless.sh on        # keep running with lid closed
-#   ./lidless.sh off       # restore normal sleep (RUN THIS WHEN DONE!)
-#   ./lidless.sh status
-#   ./lidless.sh toggle
+#   chmod +x lid.sh
+#   ./lid.sh on        # keep running with lid closed
+#   ./lid.sh off       # restore normal sleep (RUN THIS WHEN DONE!)
+#   ./lid.sh status
+#   ./lid.sh toggle
 #
 # SAFETY: needs sudo. While ON with the lid closed on battery the machine gets
 # HOT and drains fast — keep it plugged in and ventilated. Reboot resets it.
@@ -31,20 +31,20 @@ power_source() { pmset -g batt 2>/dev/null | grep -qi "AC Power" && echo "AC" ||
 show_status() {
   local s; s=$(get_state)
   if [ "$s" = "on" ]; then
-    echo "🟢 Lidless ON — running with lid closed."
+    echo "🟢 Lid ON — running with lid closed."
   else
-    echo "⚪️ Lidless OFF — normal sleep on lid close."
+    echo "⚪️ Lid OFF — normal sleep on lid close."
   fi
   echo "   Source: $(power_source) | Battery: $(batt)"
 }
 
 turn_on() {
-  echo "→ Enabling Lidless (sudo)..."
+  echo "→ Enabling Lid (sudo)..."
   sudo pmset -a disablesleep 1
   sleep 1
   if [ "$(get_state)" = "on" ]; then
     echo "✅ ON. Close the lid — the machine should stay up."
-    echo "⚠️  Remember to run: ./lidless.sh off"
+    echo "⚠️  Remember to run: ./lid.sh off"
   else
     echo "❌ Could not set the flag."
     echo "   $(pmset -g | grep -i sleepdisabled || echo 'no SleepDisabled line')"
@@ -53,7 +53,7 @@ turn_on() {
 }
 
 turn_off() {
-  echo "→ Disabling Lidless (sudo)..."
+  echo "→ Disabling Lid (sudo)..."
   sudo pmset -a disablesleep 0
   sleep 1
   if [ "$(get_state)" = "off" ]; then

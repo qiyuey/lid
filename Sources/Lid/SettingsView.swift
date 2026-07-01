@@ -7,7 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var updater: UpdaterController
 
-    private let repoURL = URL(string: "https://github.com/nghialuong/Lidless")!
+    private let repoURL = URL(string: "https://github.com/qiyuey/lid")!
 
     var body: some View {
         Form {
@@ -28,12 +28,24 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                if !state.helperInstalled {
+                if state.helperInstalled {
+                    Text("Remove the helper before uninstalling Lid or when troubleshooting launchd. Toggling will fall back to the administrator prompt.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Button("Remove background helper…", role: .destructive) {
+                        state.uninstallHelper()
+                    }
+                } else {
                     Text("Install the background helper once so toggling never asks for your password and the watchdog can protect against a stuck-awake Mac.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Button(state.helperNeedsApproval ? "Open Login Items to approve…" : "Install background helper…") {
                         state.installHelper()
+                    }
+                    if state.helperNeedsApproval {
+                        Button("Remove pending helper…", role: .destructive) {
+                            state.uninstallHelper()
+                        }
                     }
                 }
             } header: {
@@ -70,11 +82,11 @@ struct SettingsView: View {
                             .frame(width: 48, height: 48)
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Lidless").font(.headline)
+                        Text("Lid").font(.headline)
                         Text("Version \(state.appVersion)")
                             .font(.callout)
                             .foregroundStyle(.secondary)
-                        Text("Created by Nghia Luong")
+                        Text("Includes MIT-licensed upstream work by Nghia Luong")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
@@ -83,6 +95,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 460)
+        .frame(width: 420, height: 500)
     }
 }

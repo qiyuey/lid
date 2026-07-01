@@ -98,7 +98,7 @@ private struct PopoverHeader: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("Lidless").font(.headline)
+            Text("Lid").font(.headline)
             Spacer()
             Text("v\(state.appVersion)")
                 .font(.callout)
@@ -224,14 +224,16 @@ private struct SafetySection: View {
 // MARK: - Footer
 
 private struct FooterActions: View {
+    @EnvironmentObject var state: AppState
+
     var body: some View {
         HStack {
             SettingsButton()
             Spacer()
             Button {
-                NSApplication.shared.terminate(nil)
+                state.quit()
             } label: {
-                Label("Quit Lidless", systemImage: "power")
+                Label("Quit Lid", systemImage: "power")
                     .foregroundStyle(.secondary)
             }
             .keyboardShortcut("q")

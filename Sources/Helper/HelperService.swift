@@ -2,10 +2,16 @@ import Foundation
 
 final class HelperListenerDelegate: NSObject, NSXPCListenerDelegate {
     private let service = HelperService()
+    private let clientRequirement: String
+
+    init(clientRequirement: String) {
+        self.clientRequirement = clientRequirement
+    }
 
     func listener(_ listener: NSXPCListener,
                   shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
-        newConnection.exportedInterface = NSXPCInterface(with: LidlessHelperProtocol.self)
+        newConnection.setCodeSigningRequirement(clientRequirement)
+        newConnection.exportedInterface = NSXPCInterface(with: LidHelperProtocol.self)
         newConnection.exportedObject = service
         newConnection.resume()
         return true
@@ -14,8 +20,8 @@ final class HelperListenerDelegate: NSObject, NSXPCListenerDelegate {
 
 /// The actual privileged work. Runs as root, so it can call `pmset` directly
 /// with no admin prompt. Guards against a stuck-awake state with a watchdog.
-final class HelperService: NSObject, LidlessHelperProtocol {
-    private let queue = DispatchQueue(label: "com.nghialuong.lidless.helper.state")
+final class HelperService: NSObject, LidHelperProtocol {
+    private let queue = DispatchQueue(label: "com.qiyuey.lid.helper.state")
     private var lastHeartbeat = Date()
     private var keepAwake = false
     private let watchdogTimeout: TimeInterval = 90
@@ -26,7 +32,7 @@ final class HelperService: NSObject, LidlessHelperProtocol {
         startWatchdog()
     }
 
-    // MARK: LidlessHelperProtocol
+    // MARK: LidHelperProtocol
 
     func setKeepAwake(_ enabled: Bool, withReply reply: @escaping (Bool, String?) -> Void) {
         queue.async {
@@ -52,7 +58,7 @@ final class HelperService: NSObject, LidlessHelperProtocol {
     }
 
     func version(withReply reply: @escaping (String) -> Void) {
-        reply("0.1.0")
+        reply(LidHelperIdentity.versionString(bundle: .main))
     }
 
     // MARK: Watchdog
@@ -77,39 +83,19 @@ final class HelperService: NSObject, LidlessHelperProtocol {
 
     @discardableResult
     private func runPmset(disableSleep: Bool) -> (ok: Bool, error: String?) {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
-        proc.arguments = ["-a", "disablesleep", disableSleep ? "1" : "0"]
-        let errPipe = Pipe()
-        proc.standardError = errPipe
-        do {
-            try proc.run()
-        } catch {
-            return (false, error.localizedDescription)
-        }
-        proc.waitUntilExit()
-        if proc.terminationStatus != 0 {
-            let data = errPipe.fileHandleForReading.readDataToEndOfFile()
-            let msg = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return (false, msg.isEmpty ? "pmset exited \(proc.terminationStatus)" : msg)
+        let result = ProcessRunner.run("/usr/bin/pmset",
+                                       ["-a", "disablesleep", disableSleep ? "1" : "0"],
+                                       timeout: 10)
+        if !result.succeeded {
+            let msg = result.timedOut
+                ? "pmset timed out"
+                : result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (false, msg.isEmpty ? "pmset exited \(result.exitCode)" : msg)
         }
         return (true, nil)
     }
 
     private static func capture(_ path: String, _ args: [String]) -> String? {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: path)
-        proc.arguments = args
-        let pipe = Pipe()
-        proc.standardOutput = pipe
-        proc.standardError = Pipe()
-        do {
-            try proc.run()
-        } catch {
-            return nil
-        }
-        proc.waitUntilExit()
-        return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+        ProcessRunner.capture(path, args)
     }
 }

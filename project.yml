@@ -1,6 +1,6 @@
-name: Lidless
+name: Lid
 options:
-  bundleIdPrefix: com.nghialuong
+  bundleIdPrefix: com.qiyuey
   deploymentTarget:
     macOS: "13.0"
   createIntermediateGroups: true
@@ -8,7 +8,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    DEVELOPMENT_TEAM: TAFDRXJZSR
+    DEVELOPMENT_TEAM: 7T4ZKYBB6Z
     CODE_SIGN_STYLE: Automatic
 
 packages:
@@ -17,43 +17,44 @@ packages:
     from: 2.6.0
 
 targets:
-  Lidless:
+  Lid:
     type: application
     platform: macOS
     sources:
-      - Sources/Lidless
+      - Sources/Lid
       - Sources/Shared
       - Resources/Assets.xcassets
     info:
-      path: Sources/Lidless/Info.plist
+      path: Sources/Lid/Info.plist
       properties:
         LSUIElement: true
-        CFBundleName: Lidless
-        CFBundleDisplayName: Lidless
-        CFBundleShortVersionString: "0.1.1"
+        CFBundleName: Lid
+        CFBundleDisplayName: Lid
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleIconName: AppIcon
         LSMinimumSystemVersion: "13.0"
-        NSHumanReadableCopyright: "© 2026 Nghia Luong"
-        SUFeedURL: https://raw.githubusercontent.com/nghialuong/Lidless/main/docs/appcast.xml
-        SUPublicEDKey: pmOUhSI4qLDIbgndphAMYGc/oZJIk9Nw9KdEcmJBSOY=
+        NSHumanReadableCopyright: "© 2026 qiyuey. Portions © 2026 Nghia Luong."
+        SUFeedURL: https://raw.githubusercontent.com/qiyuey/lid/main/docs/appcast.xml
+        SUPublicEDKey: dckHUqDIcxNZCpJR5HErR90BA2jfh4n9VKz1Ne7kRF4=
         SUEnableAutomaticChecks: true
         SUScheduledCheckInterval: 86400
     settings:
       base:
-        MARKETING_VERSION: "0.1.1"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "2026.7.1"
+        CURRENT_PROJECT_VERSION: "2026.7.1"
+        PRODUCT_NAME: Lid
         ENABLE_HARDENED_RUNTIME: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       configs:
         # Debug builds get a `.dev` bundle id so a dev build coexists with the
         # released app — separate UserDefaults, login item, and helper daemon.
         Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: com.nghialuong.lidless.dev
+          PRODUCT_BUNDLE_IDENTIFIER: com.qiyuey.lid.dev
         Release:
-          PRODUCT_BUNDLE_IDENTIFIER: com.nghialuong.lidless
+          PRODUCT_BUNDLE_IDENTIFIER: com.qiyuey.lid
     dependencies:
-      - target: LidlessHelper
+      - target: LidHelper
         copy:
           destination: executables
       - package: Sparkle
@@ -68,6 +69,9 @@ targets:
           set -euo pipefail
           APP_ID="${PRODUCT_BUNDLE_IDENTIFIER}"
           HELPER_ID="${APP_ID}.helper"
+          TEAM_ID="${DEVELOPMENT_TEAM:-7T4ZKYBB6Z}"
+          APP_VERSION="${MARKETING_VERSION:-0}"
+          APP_BUILD="${CURRENT_PROJECT_VERSION:-0}"
           DEST="${CODESIGNING_FOLDER_PATH}/Contents/Library/LaunchDaemons"
           mkdir -p "$DEST"
           PLIST="${DEST}/${HELPER_ID}.plist"
@@ -76,15 +80,21 @@ targets:
           <plist version="1.0">
           <dict>
               <key>Label</key><string>'"${HELPER_ID}"'</string>
-              <key>BundleProgram</key><string>Contents/MacOS/LidlessHelper</string>
+              <key>BundleProgram</key><string>Contents/MacOS/LidHelper</string>
               <key>MachServices</key><dict><key>'"${HELPER_ID}"'</key><true/></dict>
               <key>AssociatedBundleIdentifiers</key><array><string>'"${APP_ID}"'</string></array>
-              <key>EnvironmentVariables</key><dict><key>LIDLESS_MACH_LABEL</key><string>'"${HELPER_ID}"'</string></dict>
+              <key>EnvironmentVariables</key><dict>
+                  <key>LID_MACH_LABEL</key><string>'"${HELPER_ID}"'</string>
+                  <key>LID_ALLOWED_CLIENT_BUNDLE_ID</key><string>'"${APP_ID}"'</string>
+                  <key>LID_ALLOWED_TEAM_ID</key><string>'"${TEAM_ID}"'</string>
+                  <key>LID_APP_VERSION</key><string>'"${APP_VERSION}"'</string>
+                  <key>LID_APP_BUILD</key><string>'"${APP_BUILD}"'</string>
+              </dict>
           </dict>
           </plist>' > "$PLIST"
           plutil -lint "$PLIST"
 
-  LidlessHelper:
+  LidHelper:
     type: tool
     platform: macOS
     sources:
@@ -92,9 +102,9 @@ targets:
       - Sources/Shared
     settings:
       base:
-        PRODUCT_NAME: LidlessHelper
+        PRODUCT_NAME: LidHelper
         ENABLE_HARDENED_RUNTIME: YES
-        # The helper is embedded into the app bundle via the Lidless target's
+        # The helper is embedded into the app bundle via the app target's
         # `copy: executables` dependency. Without this, the tool target is also
         # installed to Products/usr/local/bin in the archive, leaving two install
         # products so Xcode writes no ApplicationProperties — which makes
@@ -110,36 +120,36 @@ targets:
       configs:
         # Helper bundle id tracks the app's (`<app id>.helper`) per build config.
         Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: com.nghialuong.lidless.dev.helper
+          PRODUCT_BUNDLE_IDENTIFIER: com.qiyuey.lid.dev.helper
         Release:
-          PRODUCT_BUNDLE_IDENTIFIER: com.nghialuong.lidless.helper
+          PRODUCT_BUNDLE_IDENTIFIER: com.qiyuey.lid.helper
 
-  LidlessTests:
+  LidTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - Tests/LidlessTests
+      - Tests/LidTests
       - Sources/Shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.nghialuong.lidlessTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.qiyuey.lidTests
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:
-  Lidless:
+  Lid:
     build:
       targets:
-        Lidless: all
+        Lid: all
     run:
       config: Debug
     archive:
       config: Release
-  Lidless-CI:
+  Lid-CI:
     build:
       targets:
-        Lidless: all
-        LidlessHelper: all
-        LidlessTests: [test]
+        Lid: all
+        LidHelper: all
+        LidTests: [test]
     test:
       targets:
-        - LidlessTests
+        - LidTests
