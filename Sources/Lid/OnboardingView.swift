@@ -9,33 +9,39 @@ struct OnboardingView: View {
     @State private var step = 0
 
     private let lastStep = 3
+    private let windowCornerRadius: CGFloat = 28
 
     var body: some View {
-        GlassEffectContainer(spacing: 12) {
-            VStack(spacing: 12) {
-                LiquidGlassPanel(cornerRadius: 18, verticalPadding: 10, horizontalPadding: 14) {
-                    topBar
-                }
+        ZStack {
+            RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous)
+                .fill(.regularMaterial)
+                .glassEffect(in: .rect(cornerRadius: windowCornerRadius))
 
-                LiquidGlassPanel(cornerRadius: 22, verticalPadding: 18, horizontalPadding: 22) {
+            GlassEffectContainer(spacing: 16) {
+                VStack(spacing: 16) {
+                    topBar
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .glassEffect(in: .rect(cornerRadius: 18))
+
                     stepContent
                         .id(step)
+                        .padding(.horizontal, 28)
+                        .padding(.vertical, 12)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         .animation(.easeInOut(duration: 0.18), value: step)
-                }
-                .frame(maxHeight: .infinity)
 
-                LiquidGlassPanel(cornerRadius: 18, verticalPadding: 10, horizontalPadding: 14) {
                     footer
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 4)
                 }
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 18)
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 34)
-            .padding(.bottom, 14)
         }
-        .controlSize(.small)
-        .buttonStyle(.glass)
         .frame(width: LiquidGlassMetrics.onboardingSize.width, height: LiquidGlassMetrics.onboardingSize.height)
+        .clipShape(RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous))
     }
 
     @ViewBuilder
@@ -80,9 +86,9 @@ struct OnboardingView: View {
     @ViewBuilder
     private var stepContent: some View {
         switch step {
-        case 0:  welcomeStep
-        case 1:  howItWorksStep
-        case 2:  helperStep
+        case 0: welcomeStep
+        case 1: howItWorksStep
+        case 2: helperStep
         default: doneStep
         }
     }
@@ -173,7 +179,9 @@ struct OnboardingView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.top, 2)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(in: .rect(cornerRadius: 14))
     }
 
     @ViewBuilder
@@ -200,16 +208,24 @@ struct OnboardingView: View {
     @ViewBuilder
     private var footer: some View {
         let text = state.text
-        HStack {
+        HStack(spacing: 10) {
+            Button(text.skip) {
+                state.closeOnboarding()
+            }
+            .keyboardShortcut(.cancelAction)
+            .buttonStyle(.glass)
+            .frame(minWidth: 84)
+            .help(text.skip)
+
+            Spacer()
+
             Button(text.back) {
                 withAnimation(.easeInOut(duration: 0.18)) { step -= 1 }
             }
             .disabled(step == 0)
             .opacity(step == 0 ? 0 : 1)
             .buttonStyle(.glass)
-            .frame(minWidth: 84, alignment: .leading)
-
-            Spacer()
+            .frame(minWidth: 84)
 
             Button(step == lastStep ? text.done : text.continue) {
                 if step == lastStep {
@@ -228,23 +244,23 @@ struct OnboardingView: View {
 
     private func header(symbol: String, title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            symbolTile(symbol, size: 48, fontSize: 22)
+            symbolTile(symbol, size: 58, fontSize: 26)
             Text(title)
-                .font(.title2.weight(.semibold))
+                .font(.title.weight(.semibold))
             Text(subtitle)
-                .font(.callout)
+                .font(.title3)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func bullet(_ symbol: String, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             symbolTile(symbol, size: 30, fontSize: 14)
             Text(text)
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
         }
     }
 
@@ -254,5 +270,6 @@ struct OnboardingView: View {
             .symbolRenderingMode(.hierarchical)
             .foregroundStyle(.tint)
             .frame(width: size, height: size)
+            .glassEffect(.regular.tint(.accentColor.opacity(0.18)), in: .rect(cornerRadius: 12))
     }
 }

@@ -5,7 +5,6 @@ import SwiftUI
 struct LidApp: App {
     @StateObject private var state: AppState
     @StateObject private var updater: UpdaterController
-    @StateObject private var settingsController: SettingsController
 
     init() {
         MaintenanceCommand.runIfRequested()
@@ -13,14 +12,13 @@ struct LidApp: App {
         let updaterController = UpdaterController()
         _state = StateObject(wrappedValue: appState)
         _updater = StateObject(wrappedValue: updaterController)
-        _settingsController = StateObject(wrappedValue: SettingsController(state: appState, updater: updaterController))
     }
 
     var body: some Scene {
         MenuBarExtra {
             MenuContent()
                 .environmentObject(state)
-                .environmentObject(settingsController)
+                .environmentObject(updater)
         } label: {
             Image(state.isEnabled ? "MenubarLaptopActive" : "MenubarLaptop")
         }

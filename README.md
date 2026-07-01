@@ -5,21 +5,20 @@
 [![Downloads](https://img.shields.io/github/downloads/qiyuey/lid/total)](https://github.com/qiyuey/lid/releases)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Anti--996-blue)](LICENSE)
 
-A tiny macOS menu-bar app that keeps your Mac running even when the lid is
-closed. It is built for long-running coding agents, downloads, builds, and
-remote sessions that should continue while your MacBook is tucked away.
+Lid is a tiny macOS menu-bar app built for the AI-agent era. It keeps your Mac
+running with the lid closed so Codex, Claude Code, Cursor, OpenClaw, Hermes,
+builds, downloads, and remote sessions can keep working while your MacBook is
+tucked away.
 
-> Lid is qiyuey's personal build for local use and experiments. Upstream
-> copyright and the original MIT License are preserved where applicable.
-
-<p align="center">
-  <img src="docs/menu-popover.png" alt="Lid menu bar popover with lid sleep prevention, safety controls, and battery status" width="420">
-</p>
+![Lid menu bar popover](docs/menu-popover.png)
 
 ## Download
 
 Get the latest signed macOS build from
 [GitHub Releases](https://github.com/qiyuey/lid/releases).
+
+Lid requires macOS 26 or later. After downloading, move `Lid.app` to
+`/Applications` and open it from the menu bar.
 
 If macOS says the app is damaged or cannot be opened, clear the quarantine
 attribute after installing:
@@ -28,80 +27,71 @@ attribute after installing:
 xattr -rd com.apple.quarantine "/Applications/Lid.app"
 ```
 
-## Why Lid
+## First Run
 
-- **Lid sleep prevention**: one menu-bar switch keeps work running after the
-  lid closes.
-- **No repeated password prompts**: an optional privileged helper toggles the
-  system flag over XPC.
-- **Watchdog restore**: by default, the helper restores normal sleep if Lid
-  quits or crashes.
-- **Explicit persistence**: enable **Continue after quit** only when you want
-  lid sleep prevention to stay active after exiting the app.
-- **Safety guards**: pause on high thermal state, require charging, and stop at
-  a low-battery cutoff.
-- **Auto-off timer**: return to normal lid-close sleep after 15 minutes to
-  4 hours.
-- **Automatic updates**: Sparkle checks signed releases in the background.
-- **Language control**: follow the system language, or choose English or
-  Chinese manually.
+Lid can ask to install a small privileged helper. Install it if you want Lid to
+toggle lid sleep prevention without repeated administrator prompts.
 
-## How It Works
+The helper is also used for the watchdog restore behavior: when **Continue
+after quit** is off, the helper restores normal lid-close sleep if Lid exits or
+stops checking in.
 
-macOS normally sleeps when a MacBook lid closes. On Apple Silicon, the reliable
-way to override that is the `SleepDisabled` flag in `IOPMrootDomain`, the same
-flag changed by:
+## Controls
 
-```bash
-sudo pmset -a disablesleep 1
-```
+- **Lid sleep prevention** keeps the Mac awake when the lid is closed.
+- **Continue after quit** leaves lid sleep prevention active after quitting Lid.
+- **Turn off after** automatically returns to normal lid-close sleep after a
+  chosen time.
+- **Only while charging** pauses lid sleep prevention when the Mac is on
+  battery power.
+- **Pause when running hot** pauses lid sleep prevention during high thermal
+  pressure.
+- **Low-battery cutoff** turns lid sleep prevention off when battery level drops
+  below the selected percentage.
+- **Language** follows the system language or locks the app to English or
+  Chinese.
+- **Launch at login** starts Lid automatically after signing in.
+- **Check automatically** lets Sparkle check for signed updates in the
+  background.
 
-`caffeinate` does not prevent lid-close sleep. Lid uses a root helper registered
-with `SMAppService` to flip `SleepDisabled` without asking for an administrator
-password every time. While lid sleep prevention is active, the app sends a
-heartbeat to the helper; if the heartbeat stops and **Continue after quit** is
-off, the helper restores normal sleep.
+The bottom action row opens the setup guide, checks for updates, opens the
+GitHub project, and quits Lid.
 
-## Build
+## Compared With Other Tools
 
-Lid is a SwiftUI menu-bar app generated with XcodeGen. `project.yml` is the
-source of truth.
-
-```bash
-xcodegen generate
-xcodebuild test -scheme Lid-CI -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
-```
-
-Main directories:
-
-- `Sources/Lid`: SwiftUI app, settings, onboarding, updater, helper lifecycle.
-- `Sources/Helper`: privileged root helper registered through `SMAppService`.
-- `Sources/Shared`: pure logic shared by the app, helper, and tests.
-- `Tests/LidTests`: XCTest coverage for parsers, safety policy, settings, and
-  helper identity.
-- `Resources/Assets.xcassets`: app icon and menu-bar template images.
-- `scripts`: release automation, Sparkle tooling, and helper scripts.
-
-## Release
-
-Release versions use `YYYY.M.N`, for example `2026.7.1`. Keep
-`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` equal.
-
-Signed and notarized release builds require a Developer ID certificate,
-notarytool credentials, and a Sparkle EdDSA signing key:
-
-```bash
-./scripts/release.sh
-```
-
-The script builds a DMG, notarizes and staples it, publishes a GitHub Release,
-and writes the Sparkle appcast to `docs/appcast.xml`.
+| Feature | Lid | Amphetamine | KeepingYouAwake | `caffeinate` |
+| --- | --- | --- | --- | --- |
+| Lid-closed, no display | Yes | Needs setup | No | No |
+| No repeated password prompts | Yes | Yes | Yes | No |
+| Crash/quit restore | Watchdog helper | No | Not applicable | No |
+| Battery and thermal guards | Yes | Partial | Limited | No |
+| Auto-off timer | Yes | Yes | Yes | With flags |
+| Open source | Yes | No | Yes | Apple system tool |
+| AI focus | Codex/Claude/Cursor/OpenClaw/Hermes | General | General | CLI |
 
 ## Safety
 
 Running a MacBook closed under heavy load can increase heat and drain battery.
-Keep the machine plugged in and ventilated. Lid's safety controls reduce risk,
-and a reboot always resets the underlying `SleepDisabled` flag.
+Keep the machine plugged in and ventilated, especially during long builds or
+remote sessions.
+
+Lid's safety controls reduce risk, but they do not replace common sense. A
+reboot always resets the underlying system sleep flag.
+
+## Updates and Removal
+
+Use the update button in Lid or download a newer build from
+[GitHub Releases](https://github.com/qiyuey/lid/releases).
+
+To stop using Lid, turn **Lid sleep prevention** off first, then quit the app.
+If you installed the background helper, remove it from the menu before deleting
+`/Applications/Lid.app`.
+
+## Development
+
+Developer and contributor notes live in [AGENTS.md](AGENTS.md).
+
+## Security
 
 To report a security issue, see [SECURITY.md](SECURITY.md).
 

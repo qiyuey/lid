@@ -5,21 +5,17 @@
 [![Downloads](https://img.shields.io/github/downloads/qiyuey/lid/total)](https://github.com/qiyuey/lid/releases)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Anti--996-blue)](LICENSE)
 
-Lid 是一个轻量的 macOS 菜单栏应用，用来让 Mac 在合盖后仍然持续运行。
-它适合编码助手、下载任务、长时间构建、远程会话等需要在 MacBook 合盖后
-继续执行的场景。
+Lid 是一个为 AI agent 时代打造的轻量 macOS 菜单栏应用。
 
-> Lid 是 qiyuey 面向本地使用和实验维护的个人构建。上游版权和原始 MIT
-> 许可证在适用范围内均保留。
+合盖后，Codex、Claude Code、Cursor、OpenClaw、Hermes、构建、下载和远程会话可以继续运行。
 
-<p align="center">
-  <img src="docs/menu-popover.png" alt="Lid 菜单栏弹窗，包含合盖防睡眠、安全控制和电池状态" width="420">
-</p>
+![Lid 菜单栏弹窗](docs/menu-popover.png)
 
 ## 下载
 
-从 [GitHub Releases](https://github.com/qiyuey/lid/releases) 下载最新的
-macOS 签名版本。
+从 [GitHub Releases](https://github.com/qiyuey/lid/releases) 下载最新的 macOS 签名版本。
+
+Lid 需要 macOS 26 或更高版本。下载后，把 `Lid.app` 移到 `/Applications`，然后从菜单栏打开。
 
 如果 macOS 提示应用已损坏或无法打开，安装后在终端清除隔离属性：
 
@@ -27,74 +23,59 @@ macOS 签名版本。
 xattr -rd com.apple.quarantine "/Applications/Lid.app"
 ```
 
-## 为什么用 Lid
+## 首次使用
 
-- **合盖防睡眠**：菜单栏一键开启，合盖后任务继续运行。
-- **减少密码提示**：可选的特权 Helper 通过 XPC 修改系统开关。
-- **看门狗恢复**：默认情况下，如果 Lid 退出或崩溃，Helper 会恢复正常睡眠。
-- **显式持久化**：只有开启 **退出后继续生效** 时，退出应用后才保持合盖防睡眠。
-- **安全保护**：温度过高时暂停、可限制仅充电时开启、可设置低电量阈值。
-- **自动关闭计时器**：15 分钟到 4 小时后自动恢复正常合盖睡眠。
-- **自动更新**：Sparkle 在后台检查已签名的新版本。
-- **语言设置**：默认跟随系统，也可以手动选择中文或英文。
+Lid 可能会提示你安装一个小型特权 Helper。如果你希望开关合盖防睡眠时不反复输入管理员密码，建议安装它。
 
-## 工作原理
+Helper 也负责看门狗恢复：当 **退出后继续生效** 关闭时，如果 Lid 退出或停止发送心跳，Helper 会恢复正常的合盖睡眠。
 
-macOS 默认会在 MacBook 合盖时进入睡眠。在 Apple Silicon 上，可靠覆盖这一
-行为的方式是修改 `IOPMrootDomain` 里的 `SleepDisabled` 标志，也就是：
+## 控制项
 
-```bash
-sudo pmset -a disablesleep 1
-```
+- **合盖防睡眠**：合盖后仍然让 Mac 保持运行。
+- **退出后继续生效**：退出 Lid 后仍然保留合盖防睡眠状态。
+- **自动关闭时间**：到达指定时间后自动恢复正常合盖睡眠。
+- **仅充电时开启**：Mac 使用电池时暂停合盖防睡眠。
+- **温度过高时暂停**：系统热压力较高时暂停合盖防睡眠。
+- **低电量阈值**：电量低于指定比例时关闭合盖防睡眠。
+- **语言**：跟随系统语言，或固定使用中文 / 英文。
+- **登录时启动**：登录 macOS 后自动启动 Lid。
+- **自动检查更新**：让 Sparkle 在后台检查已签名的新版本。
 
-`caffeinate` 无法阻止合盖睡眠。Lid 通过 `SMAppService` 注册一个 root
-Helper，由 Helper 修改 `SleepDisabled`，这样每次开关时都不需要输入管理员
-密码。合盖防睡眠开启时，应用会向 Helper 发送心跳；如果心跳停止，并且没有
-开启 **退出后继续生效**，Helper 会自动恢复正常睡眠。
+底部操作按钮依次用于打开设置向导、手动检查更新、打开 GitHub 项目、退出 Lid。
 
-## 构建
+## 和其他工具对比
 
-Lid 是 SwiftUI 菜单栏应用，项目由 XcodeGen 生成。`project.yml` 是项目配置
-的唯一来源。
-
-```bash
-xcodegen generate
-xcodebuild test -scheme Lid-CI -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
-```
-
-主要目录：
-
-- `Sources/Lid`：SwiftUI 应用、设置、引导、更新、Helper 生命周期。
-- `Sources/Helper`：通过 `SMAppService` 注册的特权 root Helper。
-- `Sources/Shared`：应用、Helper 和测试共享的纯逻辑。
-- `Tests/LidTests`：解析器、安全策略、设置、Helper 身份等 XCTest 覆盖。
-- `Resources/Assets.xcassets`：应用图标和菜单栏模板图片。
-- `scripts`：发布自动化、Sparkle 工具和辅助脚本。
-
-## 发布
-
-版本号使用 `YYYY.M.N`，例如 `2026.7.1`。`MARKETING_VERSION` 和
-`CURRENT_PROJECT_VERSION` 需要保持一致。
-
-签名和公证发布需要 Developer ID 证书、notarytool 凭据，以及 Sparkle EdDSA
-签名密钥：
-
-```bash
-./scripts/release.sh
-```
-
-脚本会构建 DMG、完成公证和 stapling、发布 GitHub Release，并将 Sparkle
-appcast 写入 `docs/appcast.xml`。
+| 功能 | Lid | Amphetamine | KeepingYouAwake | `caffeinate` |
+| --- | --- | --- | --- | --- |
+| 无外接显示器合盖运行 | 支持 | 需配置 | 不支持 | 不支持 |
+| 避免反复输入密码 | 支持 | 支持 | 支持 | 不支持 |
+| 退出/崩溃后恢复睡眠 | Helper 看门狗 | 不支持 | 不涉及 | 不支持 |
+| 电量和温度保护 | 支持 | 部分支持 | 有限 | 不支持 |
+| 自动关闭计时器 | 支持 | 支持 | 支持 | 需参数 |
+| 开源 | 支持 | 不支持 | 支持 | Apple 系统工具 |
+| AI agent 定位 | Codex、Claude Code、Cursor、OpenClaw、Hermes | 通用 | 通用 | 基础命令 |
 
 ## 安全
 
-MacBook 在合盖状态下高负载运行可能升温并消耗电量。请尽量接入电源并保持
-散热通畅。Lid 的安全保护可以降低风险，重启也会重置底层的
-`SleepDisabled` 标志。
+MacBook 在合盖状态下高负载运行可能升温并消耗电量。长时间构建或远程会话时，请尽量接入电源并保持散热通畅。
+
+Lid 的安全保护可以降低风险，但不能替代基本判断。重启总是会重置底层系统睡眠标志。
+
+## 更新和移除
+
+可以使用 Lid 里的更新按钮，或从 [GitHub Releases](https://github.com/qiyuey/lid/releases) 下载新版本。
+
+如果要停止使用 Lid，先关闭 **合盖防睡眠**，再退出应用。如果安装过后台 Helper，请先在菜单中移除 Helper，再删除 `/Applications/Lid.app`。
+
+## 开发
+
+开发和贡献说明在 [AGENTS.md](AGENTS.md)。
+
+## 安全问题
 
 如需报告安全问题，请阅读 [SECURITY.md](SECURITY.md)。
 
 ## 许可证
 
-本项目包含 Nghia Luong 于 2026 年发布的 MIT 授权上游工作。qiyuey 的修改
-和分发在法律适用范围内额外采用 [Anti 996 License v1.0](LICENSE-ANTI-996)。
+本项目包含 Nghia Luong 于 2026 年发布的 MIT 授权上游工作。
+qiyuey 的修改和分发在法律适用范围内额外采用 [Anti 996 License v1.0](LICENSE-ANTI-996)。

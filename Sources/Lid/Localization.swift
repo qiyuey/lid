@@ -48,6 +48,7 @@ struct AppStrings: Sendable {
 
     var ok: String { pick("OK", "好的") }
     var cancel: String { pick("Cancel", "取消") }
+    var skip: String { pick("Skip", "跳过") }
     var open: String { pick("Open", "打开") }
     var install: String { pick("Install", "安装") }
     var remove: String { pick("Remove", "移除") }
@@ -61,69 +62,35 @@ struct AppStrings: Sendable {
 
     var languageFollowSystem: String { pick("System", "系统") }
     var languageEnglish: String { pick("English", "English") }
-    var languageChinese: String { pick("Chinese", "中文") }
+    var languageChinese: String { "中文" }
 
     // MARK: Menu
 
     var primaryTitle: String { pick("Lid sleep prevention", "合盖防睡眠") }
-    var primaryOnSubtitle: String { pick("On: lid-close sleep is disabled", "已开启：合盖后仍保持运行") }
-    var primaryOffSubtitle: String { pick("Off: lid-close sleep is normal", "已关闭：合盖后正常睡眠") }
     var primaryToggleLabel: String { pick("Enable lid sleep prevention", "开启合盖防睡眠") }
     var continueAfterQuitTitle: String { pick("Continue after quit", "退出后继续生效") }
-    var continueAfterQuitOnSubtitle: String { pick("Stays on after Lid exits", "退出 Lid 后仍保持开启") }
-    var continueAfterQuitOffSubtitle: String { pick("Turns off when Lid quits", "退出 Lid 时自动关闭") }
     var continueAfterQuitHelp: String { pick("When enabled, quitting Lid leaves lid sleep prevention active.", "开启后，退出 Lid 不会恢复正常合盖睡眠。") }
-    var helperNotice: String { pick("Install helper", "安装 Helper") }
-    var helperNeedsApprovalNotice: String { pick("Helper needs approval", "Helper 等待批准") }
     var installHelperRequiredMessage: String { pick("Install the background helper before enabling lid sleep prevention.", "请先安装后台 Helper，再开启合盖防睡眠。") }
     var safetyTitle: String { pick("Safety", "安全保护") }
     var onlyWhileCharging: String { pick("Only while charging", "仅充电时开启") }
     var pauseWhenHot: String { pick("Pause when running hot", "温度过高时暂停") }
     var lowBatteryCutoff: String { pick("Low-battery cutoff", "低电量阈值") }
     var quitLid: String { pick("Quit Lid", "退出 Lid") }
-    var settings: String { pick("Settings", "设置") }
 
-    func batteryAccessibility(percent: Int, onAC: Bool) -> String {
-        switch language {
-        case .english:
-            return "Battery \(percent) percent\(onAC ? ", on power" : "")"
-        case .chinese:
-            return "电量 \(percent)%\(onAC ? "，已接电源" : "")"
-        }
-    }
+    // MARK: Menu settings
 
-    // MARK: Settings window
-
-    var settingsWindowTitle: String { pick("Lid Settings", "Lid 设置") }
-    var sectionGeneral: String { pick("General", "通用") }
+    var sectionControls: String { pick("Controls", "控制") }
+    var sectionApp: String { pick("App", "应用") }
     var launchAtLoginTitle: String { pick("Launch at login", "登录时启动") }
-    var launchAtLoginSubtitle: String { pick("Open Lid automatically when you sign in.", "登录 macOS 后自动打开 Lid。") }
     var languageTitle: String { pick("Language", "语言") }
-    var languageSubtitle: String { pick("Use system language, or choose English / Chinese.", "默认跟随系统，也可以手动选择中文或英文。") }
     var setupGuideTitle: String { pick("Setup Guide", "设置向导") }
-    var continueAfterQuitSettingsSubtitle: String { pick("Keep lid sleep prevention active after Lid exits.", "退出 Lid 后仍保持合盖防睡眠开启。") }
-    var sectionHelper: String { pick("Background Helper", "后台 Helper") }
     var helperTitle: String { pick("Background helper", "后台 Helper") }
-    var helperActiveSubtitle: String { pick("Active. Removes password prompts and supports the watchdog.", "已启用。减少密码提示，并支持看门狗保护。") }
-    var helperPendingSubtitle: String { pick("Waiting for approval in System Settings > Login Items.", "等待在系统设置 > 登录项中批准。") }
-    var helperInstallSubtitle: String { pick("Required for lid sleep prevention and the safety watchdog.", "用于开启合盖防睡眠和安全看门狗。") }
     var pendingHelperTitle: String { pick("Pending helper", "待批准 Helper") }
-    var pendingHelperSubtitle: String { pick("Remove the unapproved helper registration.", "移除尚未批准的 Helper 注册。") }
-    var sectionAutoOff: String { pick("Auto-off Timer", "自动关闭计时器") }
     var turnOffAfterTitle: String { pick("Turn off after", "自动关闭") }
-    var turnOffAfterSubtitle: String { pick("Return to normal lid-close sleep automatically.", "到时自动恢复正常合盖睡眠。") }
     var turningOffInTitle: String { pick("Turning off in", "剩余时间") }
-    var turningOffInSubtitle: String { pick("The current session has an auto-off timer.", "当前合盖防睡眠会按计时器自动关闭。") }
-    var sectionUpdates: String { pick("Updates", "更新") }
     var checkAutomaticallyTitle: String { pick("Check automatically", "自动检查") }
-    var checkAutomaticallySubtitle: String { pick("Let Sparkle look for new releases in the background.", "让 Sparkle 在后台检查新版本。") }
     var checkNowTitle: String { pick("Check now", "立即检查") }
-    var checkNowSubtitle: String { pick("Manually check whether a newer version is available.", "手动检查是否有新版本。") }
-    var sectionAbout: String { pick("About", "关于") }
     var versionTitle: String { pick("Version", "版本") }
-    var versionSubtitle: String { pick("Marketing and build versions are kept in sync.", "营销版本和构建版本保持一致。") }
-    var sourceTitle: String { pick("Source", "源码") }
-    var sourceSubtitle: String { pick("Includes MIT-licensed upstream work by Nghia Luong.", "包含 Nghia Luong 的 MIT 授权上游工作。") }
 
     // MARK: Onboarding
 

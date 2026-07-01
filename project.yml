@@ -131,6 +131,7 @@ targets:
       - Tests/LidTests
       - Sources/Shared
       - Sources/Lid/HelperLifecycleController.swift
+      - Sources/Lid/Localization.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: top.qiyuey.lidTests

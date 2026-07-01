@@ -1,11 +1,9 @@
-import AppKit
 import SwiftUI
 
 enum LiquidGlassMetrics {
-    static let menuWidth: CGFloat = 332
-    static let settingsSize = CGSize(width: 388, height: 492)
-    static let onboardingSize = CGSize(width: 468, height: 520)
-    static let trailingControlWidth: CGFloat = 104
+    static let menuWidth: CGFloat = 372
+    static let onboardingSize = CGSize(width: 500, height: 540)
+    static let trailingControlWidth: CGFloat = 116
 }
 
 struct LiquidGlassPanel<Content: View>: View {
@@ -31,12 +29,13 @@ struct LiquidGlassSection<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             Text(title)
-                .font(.headline)
-                .padding(.horizontal, 4)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 6)
 
-            LiquidGlassPanel(cornerRadius: cornerRadius, verticalPadding: 8, horizontalPadding: 12) {
+            LiquidGlassPanel(cornerRadius: cornerRadius) {
                 VStack(alignment: .leading, spacing: rowSpacing) {
                     content()
                 }
@@ -47,27 +46,19 @@ struct LiquidGlassSection<Content: View>: View {
 
 struct LiquidGlassRow<Trailing: View>: View {
     let title: String
-    var subtitle: String?
     var titleFont: Font = .callout
-    var minHeight: CGFloat = 34
+    var minHeight: CGFloat = 44
     var trailingWidth: CGFloat? = LiquidGlassMetrics.trailingControlWidth
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(titleFont)
-                    .lineLimit(1)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
+            Text(title)
+                .font(titleFont)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer(minLength: 16)
+            Spacer(minLength: 12)
 
             trailing()
                 .fixedSize()
@@ -83,27 +74,5 @@ extension View {
             .toggleStyle(.switch)
             .controlSize(.small)
             .tint(.accentColor)
-    }
-}
-
-extension NSWindow {
-    func configureLiquidGlassShell(title: String, size: CGSize, autosaveName: String? = nil, allowsMiniaturize: Bool = false) {
-        self.title = title
-        var mask: NSWindow.StyleMask = [.titled, .closable, .fullSizeContentView]
-        if allowsMiniaturize {
-            mask.insert(.miniaturizable)
-        }
-        styleMask = mask
-        titleVisibility = .hidden
-        titlebarAppearsTransparent = true
-        isMovableByWindowBackground = true
-        isOpaque = false
-        backgroundColor = .clear
-        isReleasedWhenClosed = false
-        contentMinSize = NSSize(width: size.width, height: size.height)
-        setContentSize(NSSize(width: size.width, height: size.height))
-        if let autosaveName {
-            setFrameAutosaveName(autosaveName)
-        }
     }
 }

@@ -1,46 +1,28 @@
+import AppKit
 import SwiftUI
 
-/// The menu bar popover — "Minimal Quick Toggle".
-///
-/// Keeps only the essentials: the primary keep-awake switch, the current
-/// battery context, and the core safety controls. Everything secondary (helper
-/// setup, launch at login, auto-off timer, GitHub) lives in Settings.
+private let menuInset: CGFloat = 10
+private let repoURL = URL(string: "https://github.com/qiyuey/lid")!
+
+/// The menu bar popover. It owns every user-facing setting so Lid does not need
+/// a separate settings window.
 struct MenuContent: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
         GlassEffectContainer(spacing: 10) {
             VStack(alignment: .leading, spacing: 10) {
-                LiquidGlassPanel(cornerRadius: 20) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        PrimaryToggleRow()
-                        ContinueAfterQuitRow()
-
-                        if let err = state.lastError {
-                            Label(err, systemImage: "info.circle")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.top, 6)
-                        }
-                    }
-                }
-
-                if !state.usingHelper {
-                    HelperNotice()
-                }
-
-                LiquidGlassPanel(cornerRadius: 20) {
-                    SafetySection()
-                }
-
-                LiquidGlassPanel(cornerRadius: 18, verticalPadding: 8) {
-                    FooterActions()
-                }
+                CoreSection()
+                SafetySection()
+                AppSection()
+                FooterActions()
             }
-            .padding(10)
+            .padding(menuInset)
         }
+        .controlSize(.small)
+        .buttonStyle(.glass)
         .frame(width: LiquidGlassMetrics.menuWidth)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -50,7 +32,28 @@ private extension View {
     }
 }
 
-// MARK: - Primary control
+// MARK: - Core control
+
+private struct CoreSection: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        let text = state.text
+        LiquidGlassSection(title: text.sectionControls) {
+            PrimaryToggleRow()
+            ContinueAfterQuitRow()
+            AutoOffRows()
+
+            if let err = state.lastError {
+                Label(err, systemImage: "info.circle")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
+            }
+        }
+    }
+}
 
 /// The strongest row in the popover: the main lid sleep prevention action.
 private struct PrimaryToggleRow: View {
@@ -58,10 +61,7 @@ private struct PrimaryToggleRow: View {
 
     var body: some View {
         let text = state.text
-        LiquidGlassRow(title: text.primaryTitle,
-                       subtitle: state.isEnabled ? text.primaryOnSubtitle : text.primaryOffSubtitle,
-                       titleFont: .callout,
-                       minHeight: 46) {
+        LiquidGlassRow(title: text.primaryTitle, titleFont: .callout) {
             Toggle(text.primaryToggleLabel, isOn: Binding(
                 get: { state.isEnabled },
                 set: { value in state.setEnabled(value, userInitiated: true) }
@@ -78,9 +78,7 @@ private struct ContinueAfterQuitRow: View {
 
     var body: some View {
         let text = state.text
-        LiquidGlassRow(title: text.continueAfterQuitTitle,
-                       subtitle: state.settings.continueAfterQuit ? text.continueAfterQuitOnSubtitle : text.continueAfterQuitOffSubtitle,
-                       minHeight: 46) {
+        LiquidGlassRow(title: text.continueAfterQuitTitle) {
             Toggle(text.continueAfterQuitTitle, isOn: Binding(
                 get: { state.settings.continueAfterQuit },
                 set: { value in
@@ -95,42 +93,32 @@ private struct ContinueAfterQuitRow: View {
     }
 }
 
-// MARK: - Helper
-
-private struct HelperNotice: View {
+private struct AutoOffRows: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        LiquidGlassPanel(cornerRadius: 16, verticalPadding: 8, horizontalPadding: 10) {
-            HStack(spacing: 12) {
-                Label(title, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.orange)
-                    .lineLimit(1)
-
-                Spacer(minLength: 12)
-
-                Button(buttonTitle) {
-                    state.installHelper()
+        let text = state.text
+        LiquidGlassRow(title: text.turnOffAfterTitle) {
+            Picker("", selection: Binding(
+                get: { state.autoOffMinutes },
+                set: { state.setAutoOffMinutes($0) }
+            )) {
+                Text(text.never).tag(0)
+                ForEach(AutoOff.presetMinutes, id: \.self) { minutes in
+                    Text(text.autoOffOptionLabel(minutes: minutes)).tag(minutes)
                 }
-                .controlSize(.small)
-                .buttonStyle(.glassProminent)
-                .help(buttonHelp)
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+        }
+
+        if state.isEnabled, !state.autoOffRemaining.isEmpty {
+            LiquidGlassRow(title: text.turningOffInTitle) {
+                Text(state.autoOffRemaining)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
             }
         }
-    }
-
-    private var title: String {
-        state.helperNeedsApproval ? state.text.helperNeedsApprovalNotice : state.text.helperNotice
-    }
-
-    private var buttonTitle: String {
-        state.helperNeedsApproval ? state.text.open : state.text.install
-    }
-
-    private var buttonHelp: String {
-        state.helperNeedsApproval ? state.text.onboardingOpenLoginItems : state.text.onboardingInstallHelper
     }
 }
 
@@ -141,28 +129,27 @@ private struct SafetySection: View {
 
     var body: some View {
         let text = state.text
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(text.safetyTitle)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                BatteryStatus(percent: state.batteryPercent, onAC: state.batteryOnAC)
-            }
-            .padding(.bottom, 6)
-
-            LiquidGlassRow(title: text.onlyWhileCharging, trailingWidth: nil) {
+        LiquidGlassSection(title: text.safetyTitle) {
+            LiquidGlassRow(title: text.onlyWhileCharging) {
                 Toggle(text.onlyWhileCharging, isOn: Binding(
                     get: { state.settings.onlyWhileCharging },
-                    set: { v in var s = state.settings; s.onlyWhileCharging = v; state.updateSettings(s) }
+                    set: { value in
+                        var settings = state.settings
+                        settings.onlyWhileCharging = value
+                        state.updateSettings(settings)
+                    }
                 ))
                 .menuSwitchStyle()
             }
 
-            LiquidGlassRow(title: text.pauseWhenHot, trailingWidth: nil) {
+            LiquidGlassRow(title: text.pauseWhenHot) {
                 Toggle(text.pauseWhenHot, isOn: Binding(
                     get: { state.settings.pauseOnHighThermal },
-                    set: { v in var s = state.settings; s.pauseOnHighThermal = v; state.updateSettings(s) }
+                    set: { value in
+                        var settings = state.settings
+                        settings.pauseOnHighThermal = value
+                        state.updateSettings(settings)
+                    }
                 ))
                 .menuSwitchStyle()
             }
@@ -204,34 +191,70 @@ private struct SafetySection: View {
     }
 }
 
-private struct BatteryStatus: View {
-    @EnvironmentObject var state: AppState
+// MARK: - App
 
-    let percent: Int
-    let onAC: Bool
+private struct AppSection: View {
+    @EnvironmentObject var state: AppState
+    @EnvironmentObject var updater: UpdaterController
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: symbol)
-                .symbolRenderingMode(.hierarchical)
-                .frame(width: 22, alignment: .trailing)
-            Text("\(percent)%")
-                .monospacedDigit()
-                .frame(width: 36, alignment: .trailing)
-        }
-        .font(.subheadline)
-        .foregroundStyle(.secondary)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(state.text.batteryAccessibility(percent: percent, onAC: onAC))
-    }
+        let text = state.text
+        LiquidGlassSection(title: text.sectionApp) {
+            LiquidGlassRow(title: text.languageTitle) {
+                Picker("", selection: Binding(
+                    get: { state.languagePreference },
+                    set: { state.setLanguagePreference($0) }
+                )) {
+                    ForEach(AppLanguagePreference.allCases) { preference in
+                        Text(preference.displayName(using: text)).tag(preference)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
 
-    private var symbol: String {
-        switch percent {
-        case 88...:   return "battery.100"
-        case 63..<88: return "battery.75"
-        case 38..<63: return "battery.50"
-        case 13..<38: return "battery.25"
-        default:      return "battery.0"
+            LiquidGlassRow(title: text.launchAtLoginTitle) {
+                Toggle(text.launchAtLoginTitle, isOn: Binding(
+                    get: { state.launchAtLogin },
+                    set: { state.setLaunchAtLogin($0) }
+                ))
+                .menuSwitchStyle()
+            }
+
+            LiquidGlassRow(title: text.helperTitle) {
+                if state.helperInstalled {
+                    Button(text.remove, role: .destructive) {
+                        state.uninstallHelper()
+                    }
+                    .help(text.removeHelperTitle)
+                } else {
+                    Button(state.helperNeedsApproval ? text.open : text.install) {
+                        state.installHelper()
+                    }
+                    .buttonStyle(.glassProminent)
+                    .help(state.helperNeedsApproval ? text.onboardingOpenLoginItems : text.onboardingInstallHelper)
+                }
+            }
+
+            if state.helperNeedsApproval {
+                LiquidGlassRow(title: text.pendingHelperTitle) {
+                    Button(text.remove, role: .destructive) {
+                        state.uninstallHelper()
+                    }
+                    .help(text.removeHelperTitle)
+                }
+            }
+
+            LiquidGlassRow(title: text.checkAutomaticallyTitle) {
+                Toggle(text.checkAutomaticallyTitle, isOn: $updater.automaticallyChecksForUpdates)
+                    .menuSwitchStyle()
+            }
+
+            LiquidGlassRow(title: text.versionTitle) {
+                Text(state.appVersion)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
@@ -240,40 +263,75 @@ private struct BatteryStatus: View {
 
 private struct FooterActions: View {
     @EnvironmentObject var state: AppState
+    @EnvironmentObject var updater: UpdaterController
 
     var body: some View {
+        let text = state.text
         HStack {
-            SettingsButton()
             Spacer()
+
+            Button {
+                state.showOnboarding()
+            } label: {
+                FooterSymbol(systemName: "questionmark.circle.fill")
+            }
+            .help(text.setupGuideTitle)
+            .accessibilityLabel(text.setupGuideTitle)
+
+            Button {
+                updater.checkForUpdates()
+            } label: {
+                FooterSymbol(systemName: "arrow.clockwise.circle.fill")
+            }
+            .disabled(!updater.canCheckForUpdates)
+            .help(text.checkNowTitle)
+            .accessibilityLabel(text.checkNowTitle)
+
+            Button {
+                NSWorkspace.shared.open(repoURL)
+            } label: {
+                FooterAsset(name: "GitHubMark")
+            }
+            .help("GitHub")
+            .accessibilityLabel("GitHub")
+
             Button {
                 state.quit()
             } label: {
-                Image(systemName: "power")
+                FooterSymbol(systemName: "power.circle.fill")
             }
             .keyboardShortcut("q")
-            .help(state.text.quitLid)
-            .buttonStyle(.glass)
-            .controlSize(.small)
+            .help(text.quitLid)
+            .accessibilityLabel(text.quitLid)
         }
-        .font(.title3)
+        .buttonStyle(.glass)
+        .foregroundStyle(.secondary)
         .frame(minHeight: 30)
+        .padding(.horizontal, 12)
     }
 }
 
-/// Opens Lid's Settings window.
-private struct SettingsButton: View {
-    @EnvironmentObject var settingsController: SettingsController
-    @EnvironmentObject var state: AppState
+private struct FooterSymbol: View {
+    let systemName: String
 
     var body: some View {
-        Button {
-            settingsController.show()
-        } label: {
-            Image(systemName: "gearshape")
-        }
-        .keyboardShortcut(",", modifiers: .command)
-        .help(state.text.settings)
-        .buttonStyle(.glass)
-        .controlSize(.small)
+        Image(systemName: systemName)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 17, height: 17)
+            .frame(width: 24, height: 24)
+    }
+}
+
+private struct FooterAsset: View {
+    let name: String
+
+    var body: some View {
+        Image(name)
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 17, height: 17)
+            .frame(width: 24, height: 24)
     }
 }

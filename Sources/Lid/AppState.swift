@@ -7,9 +7,8 @@ final class AppState: ObservableObject {
     @Published var isEnabled = false
     @Published var helperInstalled = false
     @Published var helperNeedsApproval = false
-    @Published var batteryDescription = ""
-    /// Current battery charge (0–100) and whether on AC power. Drives the
-    /// popover status strip (icon + "Battery 74%").
+    /// Current battery charge (0–100) and whether on AC power. Drives safety
+    /// evaluation without showing live battery status in the menu.
     @Published var batteryPercent = 0
     @Published var batteryOnAC = false
     @Published var lastError: String?
@@ -137,7 +136,7 @@ final class AppState: ObservableObject {
 
     // MARK: Onboarding
 
-    /// Present the first-run setup window (also reachable from Settings).
+    /// Present the first-run setup window (also reachable from the menu).
     func showOnboarding() {
         onboarding.show()
     }
@@ -146,6 +145,11 @@ final class AppState: ObservableObject {
     func completeOnboarding() {
         onboardingComplete = true
         store.saveOnboardingComplete(true)
+        onboarding.close()
+    }
+
+    /// Close the setup window without changing any persisted setup state.
+    func closeOnboarding() {
         onboarding.close()
     }
 
@@ -535,6 +539,5 @@ final class AppState: ObservableObject {
     private func applyBattery(_ info: BatteryInfo) {
         batteryPercent = info.percent
         batteryOnAC = info.onAC
-        batteryDescription = "\(info.source) · \(info.percent)%"
     }
 }
