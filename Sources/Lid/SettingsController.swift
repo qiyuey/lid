@@ -39,7 +39,8 @@ final class SettingsController: ObservableObject {
         let hosting = NSHostingController(rootView: root)
         let win = NSWindow(contentViewController: hosting)
         win.title = state.text.settingsWindowTitle
-        win.styleMask = [.titled, .closable, .miniaturizable]
+        win.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+        win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
         win.isMovableByWindowBackground = true
         win.isOpaque = false

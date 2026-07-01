@@ -132,7 +132,9 @@ struct SettingsView: View {
                         }
                     }
                 }
-                .padding(18)
+                .padding(.horizontal, 18)
+                .padding(.top, 38)
+                .padding(.bottom, 18)
             }
         }
         .controlSize(.small)

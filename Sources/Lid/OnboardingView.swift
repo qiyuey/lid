@@ -30,7 +30,9 @@ struct OnboardingView: View {
                     .padding(.vertical, 12)
                     .glassEffect(in: .rect(cornerRadius: 18))
             }
-            .padding(18)
+            .padding(.horizontal, 18)
+            .padding(.top, 38)
+            .padding(.bottom, 18)
         }
         .frame(width: 500, height: 540)
     }

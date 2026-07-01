@@ -28,6 +28,7 @@ final class OnboardingController {
             let win = NSWindow(contentViewController: hosting)
             win.title = state.text.onboardingWindowTitle
             win.styleMask = [.titled, .closable, .fullSizeContentView]
+            win.titleVisibility = .hidden
             win.titlebarAppearsTransparent = true
             win.isMovableByWindowBackground = true
             win.isOpaque = false
