@@ -10,7 +10,9 @@ running with the lid closed so Codex, Claude Code, Cursor, OpenClaw, Hermes,
 builds, downloads, and remote sessions can keep working while your MacBook is
 tucked away.
 
-![Lid menu bar popover](docs/menu-popover.png)
+<p align="center">
+  <img src="docs/menu-popover.png" alt="Lid menu bar popover" width="360">
+</p>
 
 ## Download
 

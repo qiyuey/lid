@@ -9,7 +9,9 @@ Lid 是一个为 AI agent 时代打造的轻量 macOS 菜单栏应用。
 
 合盖后，Codex、Claude Code、Cursor、OpenClaw、Hermes、构建、下载和远程会话可以继续运行。
 
-![Lid 菜单栏弹窗](docs/menu-popover.png)
+<p align="center">
+  <img src="docs/menu-popover.png" alt="Lid 菜单栏弹窗" width="360">
+</p>
 
 ## 下载
 
