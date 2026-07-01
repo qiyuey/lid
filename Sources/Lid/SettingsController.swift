@@ -9,7 +9,6 @@ final class SettingsController: ObservableObject {
     private let state: AppState
     private let updater: UpdaterController
     private var window: NSWindow?
-    private let windowSize = NSSize(width: 420, height: 500)
 
     init(state: AppState, updater: UpdaterController) {
         self.state = state
@@ -38,17 +37,12 @@ final class SettingsController: ObservableObject {
             .environmentObject(updater)
         let hosting = NSHostingController(rootView: root)
         let win = NSWindow(contentViewController: hosting)
-        win.title = state.text.settingsWindowTitle
-        win.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
-        win.titleVisibility = .hidden
-        win.titlebarAppearsTransparent = true
-        win.isMovableByWindowBackground = true
-        win.isOpaque = false
-        win.backgroundColor = .clear
-        win.isReleasedWhenClosed = false
-        win.contentMinSize = windowSize
-        win.setFrameAutosaveName("LidSettingsWindow.v3")
-        win.setContentSize(windowSize)
+        win.configureLiquidGlassShell(
+            title: state.text.settingsWindowTitle,
+            size: LiquidGlassMetrics.settingsSize,
+            autosaveName: "LidSettingsWindow.v4",
+            allowsMiniaturize: true
+        )
         win.center()
         return win
     }

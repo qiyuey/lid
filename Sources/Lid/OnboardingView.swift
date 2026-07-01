@@ -11,30 +11,31 @@ struct OnboardingView: View {
     private let lastStep = 3
 
     var body: some View {
-        GlassEffectContainer(spacing: 16) {
-            VStack(spacing: 16) {
-                topBar
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .glassEffect(in: .rect(cornerRadius: 18))
+        GlassEffectContainer(spacing: 12) {
+            VStack(spacing: 12) {
+                LiquidGlassPanel(cornerRadius: 18, verticalPadding: 10, horizontalPadding: 14) {
+                    topBar
+                }
 
-                stepContent
-                    .id(step)
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 12)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .animation(.easeInOut(duration: 0.18), value: step)
+                LiquidGlassPanel(cornerRadius: 22, verticalPadding: 18, horizontalPadding: 22) {
+                    stepContent
+                        .id(step)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .animation(.easeInOut(duration: 0.18), value: step)
+                }
+                .frame(maxHeight: .infinity)
 
-                footer
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .glassEffect(in: .rect(cornerRadius: 18))
+                LiquidGlassPanel(cornerRadius: 18, verticalPadding: 10, horizontalPadding: 14) {
+                    footer
+                }
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 38)
-            .padding(.bottom, 18)
+            .padding(.horizontal, 14)
+            .padding(.top, 34)
+            .padding(.bottom, 14)
         }
-        .frame(width: 500, height: 540)
+        .controlSize(.small)
+        .buttonStyle(.glass)
+        .frame(width: LiquidGlassMetrics.onboardingSize.width, height: LiquidGlassMetrics.onboardingSize.height)
     }
 
     @ViewBuilder
@@ -172,9 +173,7 @@ struct OnboardingView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(in: .rect(cornerRadius: 14))
+        .padding(.top, 2)
     }
 
     @ViewBuilder
@@ -191,7 +190,7 @@ struct OnboardingView: View {
                 get: { state.launchAtLogin },
                 set: { state.setLaunchAtLogin($0) }
             ))
-            .toggleStyle(.switch)
+            .liquidGlassSwitchStyle()
             .padding(.top, 8)
         }
     }
@@ -229,11 +228,11 @@ struct OnboardingView: View {
 
     private func header(symbol: String, title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            symbolTile(symbol, size: 58, fontSize: 26)
+            symbolTile(symbol, size: 48, fontSize: 22)
             Text(title)
-                .font(.title.weight(.semibold))
+                .font(.title2.weight(.semibold))
             Text(subtitle)
-                .font(.title3)
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -255,6 +254,5 @@ struct OnboardingView: View {
             .symbolRenderingMode(.hierarchical)
             .foregroundStyle(.tint)
             .frame(width: size, height: size)
-            .glassEffect(.regular.tint(.accentColor.opacity(0.18)), in: .rect(cornerRadius: 12))
     }
 }

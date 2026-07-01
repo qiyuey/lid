@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Shared inset for the floating glass groups in the menu window.
-private let menuInset: CGFloat = 10
-
 /// The menu bar popover — "Minimal Quick Toggle".
 ///
 /// Keeps only the essentials: the primary keep-awake switch, the current
@@ -14,82 +11,42 @@ struct MenuContent: View {
     var body: some View {
         GlassEffectContainer(spacing: 10) {
             VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    PrimaryToggleRow()
-                    ContinueAfterQuitRow()
+                LiquidGlassPanel(cornerRadius: 20) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        PrimaryToggleRow()
+                        ContinueAfterQuitRow()
 
-                    if let err = state.lastError {
-                        Label(err, systemImage: "info.circle")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, 6)
+                        if let err = state.lastError {
+                            Label(err, systemImage: "info.circle")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, 6)
+                        }
                     }
                 }
-                .menuGlassGroup(cornerRadius: 20)
 
                 if !state.usingHelper {
                     HelperNotice()
                 }
 
-                SafetySection()
-                    .menuGlassGroup(cornerRadius: 20)
+                LiquidGlassPanel(cornerRadius: 20) {
+                    SafetySection()
+                }
 
-                FooterActions()
-                    .menuGlassGroup(cornerRadius: 18)
-            }
-            .padding(menuInset)
-        }
-        .frame(width: 348)
-    }
-}
-
-// MARK: - Reusable row
-
-/// A native settings-style row: leading label, flexible gap, trailing control
-/// pinned to the shared right edge. Used for the primary toggle and every
-/// safety row so all controls share one trailing column.
-private struct SettingRow<Trailing: View>: View {
-    let title: String
-    var subtitle: String?
-    var titleFont: Font = .callout
-    var minHeight: CGFloat = 36
-    @ViewBuilder var trailing: () -> Trailing
-
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(titleFont)
-                    .lineLimit(1)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                LiquidGlassPanel(cornerRadius: 18, verticalPadding: 8) {
+                    FooterActions()
                 }
             }
-            Spacer(minLength: 16)
-            trailing()
-                .fixedSize()
+            .padding(10)
         }
-        .frame(minHeight: minHeight)
+        .frame(width: LiquidGlassMetrics.menuWidth)
     }
 }
 
 private extension View {
     func menuSwitchStyle() -> some View {
-        labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .tint(.accentColor)
-    }
-
-    func menuGlassGroup(cornerRadius: CGFloat) -> some View {
-        padding(.vertical, 10)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(in: .rect(cornerRadius: cornerRadius))
+        liquidGlassSwitchStyle()
     }
 }
 
@@ -101,10 +58,10 @@ private struct PrimaryToggleRow: View {
 
     var body: some View {
         let text = state.text
-        SettingRow(title: text.primaryTitle,
-                   subtitle: state.isEnabled ? text.primaryOnSubtitle : text.primaryOffSubtitle,
-                   titleFont: .callout,
-                   minHeight: 46) {
+        LiquidGlassRow(title: text.primaryTitle,
+                       subtitle: state.isEnabled ? text.primaryOnSubtitle : text.primaryOffSubtitle,
+                       titleFont: .callout,
+                       minHeight: 46) {
             Toggle(text.primaryToggleLabel, isOn: Binding(
                 get: { state.isEnabled },
                 set: { value in state.setEnabled(value, userInitiated: true) }
@@ -121,9 +78,9 @@ private struct ContinueAfterQuitRow: View {
 
     var body: some View {
         let text = state.text
-        SettingRow(title: text.continueAfterQuitTitle,
-                   subtitle: state.settings.continueAfterQuit ? text.continueAfterQuitOnSubtitle : text.continueAfterQuitOffSubtitle,
-                   minHeight: 46) {
+        LiquidGlassRow(title: text.continueAfterQuitTitle,
+                       subtitle: state.settings.continueAfterQuit ? text.continueAfterQuitOnSubtitle : text.continueAfterQuitOffSubtitle,
+                       minHeight: 46) {
             Toggle(text.continueAfterQuitTitle, isOn: Binding(
                 get: { state.settings.continueAfterQuit },
                 set: { value in
@@ -131,9 +88,9 @@ private struct ContinueAfterQuitRow: View {
                     settings.continueAfterQuit = value
                     state.updateSettings(settings)
                 }
-                ))
-                .menuSwitchStyle()
-                .help(text.continueAfterQuitHelp)
+            ))
+            .menuSwitchStyle()
+            .help(text.continueAfterQuitHelp)
         }
     }
 }
@@ -144,26 +101,24 @@ private struct HelperNotice: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        HStack(spacing: 12) {
-            Label(title, systemImage: "exclamationmark.triangle.fill")
-                .font(.callout)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.orange)
-                .lineLimit(1)
+        LiquidGlassPanel(cornerRadius: 16, verticalPadding: 8, horizontalPadding: 10) {
+            HStack(spacing: 12) {
+                Label(title, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
 
-            Spacer(minLength: 12)
+                Spacer(minLength: 12)
 
-            Button(buttonTitle) {
-                state.installHelper()
+                Button(buttonTitle) {
+                    state.installHelper()
+                }
+                .controlSize(.small)
+                .buttonStyle(.glassProminent)
+                .help(buttonHelp)
             }
-            .controlSize(.small)
-            .buttonStyle(.glassProminent)
-            .help(buttonHelp)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 8)
-        .padding(.horizontal, 10)
-        .glassEffect(in: .rect(cornerRadius: 14))
     }
 
     private var title: String {
@@ -196,7 +151,7 @@ private struct SafetySection: View {
             }
             .padding(.bottom, 6)
 
-            SettingRow(title: text.onlyWhileCharging) {
+            LiquidGlassRow(title: text.onlyWhileCharging, trailingWidth: nil) {
                 Toggle(text.onlyWhileCharging, isOn: Binding(
                     get: { state.settings.onlyWhileCharging },
                     set: { v in var s = state.settings; s.onlyWhileCharging = v; state.updateSettings(s) }
@@ -204,7 +159,7 @@ private struct SafetySection: View {
                 .menuSwitchStyle()
             }
 
-            SettingRow(title: text.pauseWhenHot) {
+            LiquidGlassRow(title: text.pauseWhenHot, trailingWidth: nil) {
                 Toggle(text.pauseWhenHot, isOn: Binding(
                     get: { state.settings.pauseOnHighThermal },
                     set: { v in var s = state.settings; s.pauseOnHighThermal = v; state.updateSettings(s) }

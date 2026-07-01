@@ -10,7 +10,7 @@ import SwiftUI
 /// Settings window already surfaces.
 @MainActor
 final class OnboardingController {
-    private weak var state: AppState?
+    private unowned let state: AppState
     private var window: NSWindow?
 
     init(state: AppState) {
@@ -20,21 +20,11 @@ final class OnboardingController {
     /// Show the window, building it on first use and reusing it afterwards so we
     /// never stack duplicates.
     func show() {
-        guard let state else { return }
-
         if window == nil {
             let root = OnboardingView().environmentObject(state)
             let hosting = NSHostingController(rootView: root)
             let win = NSWindow(contentViewController: hosting)
-            win.title = state.text.onboardingWindowTitle
-            win.styleMask = [.titled, .closable, .fullSizeContentView]
-            win.titleVisibility = .hidden
-            win.titlebarAppearsTransparent = true
-            win.isMovableByWindowBackground = true
-            win.isOpaque = false
-            win.backgroundColor = .clear
-            win.isReleasedWhenClosed = false
-            win.contentMinSize = NSSize(width: 500, height: 540)
+            win.configureLiquidGlassShell(title: state.text.onboardingWindowTitle, size: LiquidGlassMetrics.onboardingSize)
             win.center()
             window = win
         }

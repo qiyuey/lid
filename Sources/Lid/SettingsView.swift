@@ -13,8 +13,8 @@ struct SettingsView: View {
         GlassEffectContainer(spacing: 16) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    SettingsGlassSection(title: text.sectionGeneral) {
-                        SettingsRow(title: text.languageTitle) {
+                    LiquidGlassSection(title: text.sectionGeneral) {
+                        LiquidGlassRow(title: text.languageTitle) {
                             Picker("", selection: Binding(
                                 get: { state.languagePreference },
                                 set: { state.setLanguagePreference($0) }
@@ -28,22 +28,22 @@ struct SettingsView: View {
                             .buttonStyle(.glass)
                         }
 
-                        SettingsRow(title: text.setupGuideTitle) {
+                        LiquidGlassRow(title: text.setupGuideTitle) {
                             Button(text.open) {
                                 state.showOnboarding()
                             }
                             .buttonStyle(.glass)
                         }
 
-                        SettingsRow(title: text.launchAtLoginTitle) {
+                        LiquidGlassRow(title: text.launchAtLoginTitle) {
                             Toggle(text.launchAtLoginTitle, isOn: Binding(
                                 get: { state.launchAtLogin },
                                 set: { state.setLaunchAtLogin($0) }
                             ))
-                            .settingsSwitchStyle()
+                            .liquidGlassSwitchStyle()
                         }
 
-                        SettingsRow(title: text.continueAfterQuitTitle) {
+                        LiquidGlassRow(title: text.continueAfterQuitTitle) {
                             Toggle(text.continueAfterQuitTitle, isOn: Binding(
                                 get: { state.settings.continueAfterQuit },
                                 set: { value in
@@ -52,12 +52,12 @@ struct SettingsView: View {
                                     state.updateSettings(settings)
                                 }
                             ))
-                            .settingsSwitchStyle()
+                            .liquidGlassSwitchStyle()
                         }
                     }
 
-                    SettingsGlassSection(title: text.sectionHelper) {
-                        SettingsRow(title: text.helperTitle) {
+                    LiquidGlassSection(title: text.sectionHelper) {
+                        LiquidGlassRow(title: text.helperTitle) {
                             if state.helperInstalled {
                                 Button(text.remove, role: .destructive) {
                                     state.uninstallHelper()
@@ -72,7 +72,7 @@ struct SettingsView: View {
                         }
 
                         if state.helperNeedsApproval {
-                            SettingsRow(title: text.pendingHelperTitle) {
+                            LiquidGlassRow(title: text.pendingHelperTitle) {
                                 Button(text.remove, role: .destructive) {
                                     state.uninstallHelper()
                                 }
@@ -81,8 +81,8 @@ struct SettingsView: View {
                         }
                     }
 
-                    SettingsGlassSection(title: text.sectionAutoOff) {
-                        SettingsRow(title: text.turnOffAfterTitle) {
+                    LiquidGlassSection(title: text.sectionAutoOff) {
+                        LiquidGlassRow(title: text.turnOffAfterTitle) {
                             Picker("", selection: Binding(
                                 get: { state.autoOffMinutes },
                                 set: { state.setAutoOffMinutes($0) }
@@ -98,7 +98,7 @@ struct SettingsView: View {
                         }
 
                         if state.isEnabled, !state.autoOffRemaining.isEmpty {
-                            SettingsRow(title: text.turningOffInTitle) {
+                            LiquidGlassRow(title: text.turningOffInTitle) {
                                 Text(state.autoOffRemaining)
                                     .monospacedDigit()
                                     .foregroundStyle(.secondary)
@@ -106,27 +106,27 @@ struct SettingsView: View {
                         }
                     }
 
-                    SettingsGlassSection(title: text.sectionUpdates) {
-                        SettingsRow(title: text.checkAutomaticallyTitle) {
+                    LiquidGlassSection(title: text.sectionUpdates) {
+                        LiquidGlassRow(title: text.checkAutomaticallyTitle) {
                             Toggle(text.checkAutomaticallyTitle, isOn: $updater.automaticallyChecksForUpdates)
-                                .settingsSwitchStyle()
+                                .liquidGlassSwitchStyle()
                         }
 
-                        SettingsRow(title: text.checkNowTitle) {
+                        LiquidGlassRow(title: text.checkNowTitle) {
                             Button(text.check) { updater.checkForUpdates() }
                                 .disabled(!updater.canCheckForUpdates)
                                 .buttonStyle(.glass)
                         }
                     }
 
-                    SettingsGlassSection(title: text.sectionAbout) {
-                        SettingsRow(title: text.versionTitle) {
+                    LiquidGlassSection(title: text.sectionAbout) {
+                        LiquidGlassRow(title: text.versionTitle) {
                             Text(state.appVersion)
                                 .monospacedDigit()
                                 .foregroundStyle(.secondary)
                         }
 
-                        SettingsRow(title: text.sourceTitle) {
+                        LiquidGlassRow(title: text.sourceTitle) {
                             Link("GitHub", destination: repoURL)
                                 .buttonStyle(.glass)
                         }
@@ -139,59 +139,10 @@ struct SettingsView: View {
         }
         .controlSize(.small)
         .buttonStyle(.glass)
-        .frame(width: 420, height: 500)
+        .frame(width: LiquidGlassMetrics.settingsSize.width, height: LiquidGlassMetrics.settingsSize.height)
         .onAppear { NSApp.keyWindow?.title = text.settingsWindowTitle }
         .onChange(of: state.languagePreference) { _, _ in
             NSApp.keyWindow?.title = state.text.settingsWindowTitle
         }
-    }
-}
-
-private struct SettingsGlassSection<Content: View>: View {
-    let title: String
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
-                .padding(.horizontal, 4)
-
-            VStack(alignment: .leading, spacing: 4) {
-                content()
-            }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(in: .rect(cornerRadius: 20))
-        }
-    }
-}
-
-private struct SettingsRow<Trailing: View>: View {
-    let title: String
-    @ViewBuilder var trailing: () -> Trailing
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(title)
-                .lineLimit(1)
-
-            Spacer(minLength: 16)
-
-            trailing()
-                .fixedSize()
-                .frame(width: 116, alignment: .trailing)
-        }
-        .frame(minHeight: 34)
-    }
-}
-
-private extension View {
-    func settingsSwitchStyle() -> some View {
-        labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .tint(.accentColor)
     }
 }
