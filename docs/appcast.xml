@@ -3,12 +3,12 @@
     <channel>
         <title>Lid</title>
         <item>
-            <title>2026.7.2</title>
-            <pubDate>Thu, 02 Jul 2026 13:04:54 +0800</pubDate>
-            <sparkle:version>2026.7.2</sparkle:version>
-            <sparkle:shortVersionString>2026.7.2</sparkle:shortVersionString>
+            <title>2026.7.3</title>
+            <pubDate>Thu, 02 Jul 2026 06:28:12 +0000</pubDate>
+            <sparkle:version>2026.7.3</sparkle:version>
+            <sparkle:shortVersionString>2026.7.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/qiyuey/lid/releases/latest/download/Lid-2026.7.2-self-signed.dmg" length="3889928" type="application/octet-stream" sparkle:edSignature="/C6cDYFisu0JkJJLG6lok1L0QRAj9euXyn9+5yyKR/zX0MMPw5PBXwdqExrE4BDGsdmKKpPd79jrdeOInzH4BQ=="/>
+            <enclosure url="https://github.com/qiyuey/lid/releases/latest/download/Lid-2026.7.3-self-signed.dmg" length="3882211" type="application/octet-stream" sparkle:edSignature="KzDrdo8dObOwErGYmCBraAhmxeEYEV64ZGzXh9fZINfTQTz9fBTk/MOjzuqNhZ/ohTJoVUP/3zLGiePip1FSCw=="/>
         </item>
     </channel>
 </rss>
