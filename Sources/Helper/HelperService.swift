@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 final class HelperListenerDelegate: NSObject, NSXPCListenerDelegate {
     private let service = HelperService()
@@ -22,6 +23,7 @@ final class HelperListenerDelegate: NSObject, NSXPCListenerDelegate {
 /// with no admin prompt. Guards against a stuck-awake state with a watchdog.
 final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
     private let queue = DispatchQueue(label: "top.qiyuey.lid.helper.state")
+    private let logger = Logger(subsystem: "top.qiyuey.lid", category: "helper-service")
     private var lastHeartbeat = Date()
     private var keepAwake = false
     private var watchdogEnabled = true
@@ -35,6 +37,7 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
 
     override init() {
         super.init()
+        logger.info("Helper service initialized")
         startWatchdog()
     }
 
@@ -44,11 +47,14 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
         queue.async {
             let result = self.runPmset(disableSleep: enabled)
             if result.ok {
+                self.logger.info("Set SleepDisabled to \(enabled, privacy: .public)")
                 self.keepAwake = enabled
                 self.lastHeartbeat = Date()
                 if enabled {
                     self.watchdogEnabled = true
                 }
+            } else {
+                self.logger.error("Failed to set SleepDisabled to \(enabled, privacy: .public): \(result.error ?? "unknown", privacy: .public)")
             }
             reply(result.ok, result.error)
         }
@@ -56,6 +62,7 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
 
     func setWatchdogEnabled(_ enabled: Bool, withReply reply: @escaping @Sendable (Bool, String?) -> Void) {
         queue.async {
+            self.logger.info("Set watchdog enabled to \(enabled, privacy: .public)")
             self.watchdogEnabled = enabled
             if enabled {
                 self.lastHeartbeat = Date()
@@ -94,7 +101,10 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
                                           timeout: self.watchdogTimeout) {
                 let result = self.runPmset(disableSleep: false)
                 if result.ok || Self.currentSleepDisabled() == false {
+                    self.logger.warning("Watchdog restored normal sleep after missed heartbeat")
                     self.keepAwake = false
+                } else {
+                    self.logger.error("Watchdog failed to restore normal sleep: \(result.error ?? "unknown", privacy: .public)")
                 }
             }
         }

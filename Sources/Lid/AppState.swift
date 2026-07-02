@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Foundation
+import OSLog
 
 @MainActor
 final class AppState: ObservableObject {
@@ -38,6 +39,7 @@ final class AppState: ObservableObject {
     @Published var onboardingComplete = false
 
     private let helper = HelperManager()
+    private let logger = Logger(subsystem: "top.qiyuey.lid", category: "app-state")
     private let emergencyRestorer = EmergencySleepRestorer()
     private let battery = BatteryMonitor()
     private let store = SettingsStore()
@@ -63,7 +65,14 @@ final class AppState: ObservableObject {
     private var helperStatusTimer: Timer?
     private var heartbeatTimer: Timer?
     private var lastRequestedHelperWatchdogEnabled: Bool?
+    private var automaticHelperRepairGate = AutomaticHelperRepairGate(
+        cooldown: Timing.automaticHelperRepairCooldown
+    )
     private var stateChangeRequestID = 0
+
+    private enum Timing {
+        static let automaticHelperRepairCooldown: TimeInterval = 60
+    }
 
     private var didBecomeActiveObserver: NSObjectProtocol?
     private var localeObserver: NSObjectProtocol?
@@ -321,6 +330,10 @@ final class AppState: ObservableObject {
                 guard let self else { return }
                 if let err {
                     self.lastError = err
+                    self.logger.error("Refresh state failed through helper: \(err, privacy: .public)")
+                    self.repairHelperAutomatically { [weak self] in
+                        self?.refreshState()
+                    }
                     return
                 }
                 self.applyObservedEnabledState(value)
@@ -452,18 +465,62 @@ final class AppState: ObservableObject {
     /// the outcome. Used both automatically after a helper-version mismatch and
     /// from the failure alert's "Reinstall Helper" action.
     func repairHelper() {
+        repairHelper(showSuccessMessage: true)
+    }
+
+    private func repairHelper(showSuccessMessage: Bool,
+                              afterRepair: (() -> Void)? = nil,
+                              completion: (() -> Void)? = nil) {
         helperLifecycle.repair { [weak self] errorMessage in
             guard let self else { return }
             self.syncHelperStatus()
             if let errorMessage {
+                self.logger.error("Helper repair failed: \(errorMessage, privacy: .public)")
                 self.lastError = errorMessage
+                completion?()
             } else if self.helperLifecycle.needsApproval {
+                self.logger.info("Helper repair completed but approval is required")
                 self.lastError = self.text.approveHelperThenTry
-                self.helper.openLoginItemsSettings()
+                if showSuccessMessage {
+                    self.helper.openLoginItemsSettings()
+                }
+                completion?()
             } else {
+                self.logger.info("Helper repair completed")
                 self.ensureHelperWatchdogEnabled(force: true)
-                self.lastError = self.text.helperReinstalledMessage
+                self.lastError = showSuccessMessage ? self.text.helperReinstalledMessage : nil
+                afterRepair?()
+                completion?()
             }
+        }
+    }
+
+    private func repairHelperAutomatically(afterRepair: (() -> Void)? = nil) {
+        if automaticHelperRepairGate.isRepairInProgress {
+            logger.info("Skipping automatic helper repair because repair is already running")
+            return
+        }
+
+        refreshHelperStatus()
+        guard helperInstalled else {
+            logger.info("Skipping automatic helper repair because helper is not installed")
+            lastError = helperNeedsApproval ? text.approveHelperThenTry : text.installHelperRequiredMessage
+            return
+        }
+
+        guard automaticHelperRepairGate.beginIfAllowed(
+            now: Date(),
+            helperInstalled: helperInstalled,
+            helperNeedsApproval: helperNeedsApproval
+        ) else {
+            logger.info("Skipping automatic helper repair")
+            return
+        }
+
+        logger.info("Starting automatic helper repair")
+        repairHelper(showSuccessMessage: false,
+                     afterRepair: afterRepair) { [weak self] in
+            self?.automaticHelperRepairGate.finish()
         }
     }
 
@@ -487,6 +544,8 @@ final class AppState: ObservableObject {
             if !ok {
                 self.lastRequestedHelperWatchdogEnabled = nil
                 self.lastError = err ?? self.text.watchdogPolicyError
+                self.logger.error("Failed to update helper watchdog policy: \(self.lastError ?? "unknown", privacy: .public)")
+                self.repairHelperAutomatically()
             }
         }
     }
@@ -551,9 +610,14 @@ final class AppState: ObservableObject {
 
             if let err {
                 self.lastError = err
+                self.logger.error("Confirm helper state failed: \(err, privacy: .public)")
                 if userInitiated {
                     self.alerts.presentHelperFailure(message: err) { [weak self] in
                         self?.repairHelper()
+                    }
+                } else {
+                    self.repairHelperAutomatically {
+                        self.refreshState()
                     }
                 }
                 self.finishStateChange(requestID)

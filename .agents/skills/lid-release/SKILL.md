@@ -29,11 +29,12 @@ Useful variants:
 
 ## Workflow
 
-1. Confirm the user wants a live self-signed GitHub release. If they ask to preview, run `--dry-run`.
-2. Run the script from a clean `main` worktree. Let it compute the next `YYYY.M.N` version unless the user specified one.
+1. Confirm the user wants a live self-signed GitHub release. If they only invoke the skill or ask to preview without explicitly asking to publish, run `--dry-run`, report the resolved version/tag, and wait for confirmation.
+2. Run the script from a clean `main` worktree. If the worktree is dirty, inspect the changes first: commit and push release-relevant changes before releasing, but stop and ask if unrelated local changes are present. Do not stash, revert, or hide local changes as part of release preparation.
 3. Let the script sync `main`, bump `project.yml`, run `xcodegen generate`, run `Lid-CI`, commit and push the version bump, create tag `vYYYY.M.N`, push the tag, then watch `.github/workflows/release.yml`.
 4. Let GitHub Actions build and verify the self-signed DMG, create/update the GitHub Release, generate and commit `docs/appcast.xml`, and update `qiyuey/homebrew-tap`.
-5. Report the release URL, commit hash, pushed tag, workflow URL/result, Homebrew tap update, test result, and any remaining tracked changes.
+5. After the workflow finishes, verify the release with `gh release view "$TAG"`, inspect the workflow result with `gh run view`, and verify Homebrew with `brew info --cask qiyuey/tap/lid` or the updated `qiyuey/homebrew-tap` `Casks/lid.rb`.
+6. Report the release URL, commit hash, pushed tag, workflow URL/result, Homebrew tap update, test result, and any remaining tracked changes.
 
 ## Failure Handling
 

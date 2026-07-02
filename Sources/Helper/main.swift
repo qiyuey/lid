@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 // Entry point for the privileged helper (a LaunchDaemon running as root).
 // It listens on a Mach service and serves LidHelperProtocol over XPC. The
@@ -18,6 +19,8 @@ let clientRequirement = LidHelperIdentity.clientCodeSigningRequirement(appBundle
                                                                        teamID: teamID,
                                                                        certificateCommonName: certificateCommonName,
                                                                        certificateSHA1: certificateSHA1)
+let logger = Logger(subsystem: "top.qiyuey.lid", category: "helper-main")
+logger.info("Starting helper for \(machLabel, privacy: .public)")
 
 let delegate = HelperListenerDelegate(clientRequirement: clientRequirement)
 let listener = NSXPCListener(machServiceName: machLabel)

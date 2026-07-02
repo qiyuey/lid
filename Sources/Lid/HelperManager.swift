@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import OSLog
 import ServiceManagement
 
 /// Manages the privileged helper: registration via SMAppService and XPC calls.
@@ -7,6 +8,7 @@ import ServiceManagement
 @MainActor
 final class HelperManager {
     private var connection: NSXPCConnection?
+    private let logger = Logger(subsystem: "top.qiyuey.lid", category: "helper-manager")
     private enum Timing {
         static let reregisterSettleDelay: UInt64 = 500_000_000
         static let defaultXPCTimeout: TimeInterval = 6
@@ -93,18 +95,37 @@ final class HelperManager {
 
     private func connect() -> NSXPCConnection {
         if let existing = connection { return existing }
+        logger.info("Creating helper XPC connection for \(self.helperLabel, privacy: .public)")
         let conn = NSXPCConnection(machServiceName: helperLabel, options: .privileged)
         conn.remoteObjectInterface = NSXPCInterface(with: LidHelperProtocol.self)
-        conn.invalidationHandler = { [weak self] in
-            Task { @MainActor in self?.connection = nil }
+        conn.invalidationHandler = { [weak self, weak conn] in
+            Task { @MainActor in
+                guard let conn else { return }
+                self?.dropConnection(conn)
+            }
         }
-        conn.interruptionHandler = { }
+        conn.interruptionHandler = { [weak self, weak conn] in
+            Task { @MainActor in
+                guard let conn else { return }
+                self?.dropConnection(conn)
+            }
+        }
         conn.resume()
         connection = conn
         return conn
     }
 
+    private func dropConnection(_ conn: NSXPCConnection) {
+        if connection === conn {
+            logger.info("Dropping interrupted helper XPC connection")
+            connection = nil
+        }
+    }
+
     private func resetConnection() {
+        if connection != nil {
+            logger.info("Resetting helper XPC connection")
+        }
         connection?.invalidate()
         connection = nil
     }
@@ -113,6 +134,7 @@ final class HelperManager {
         let errorHandler: @Sendable (Error) -> Void = { [weak self] error in
             let message = error.localizedDescription
             Task { @MainActor in
+                self?.logger.error("Helper XPC error: \(message, privacy: .public)")
                 self?.resetConnection()
                 onError(message)
             }
@@ -180,6 +202,7 @@ final class HelperManager {
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in
             Task { @MainActor in
                 guard gate.claim() else { return }
+                self?.logger.error("Helper XPC call timed out after \(timeout, privacy: .public)s")
                 self?.resetConnection()
                 completion(false, "The background helper isn’t responding.")
             }

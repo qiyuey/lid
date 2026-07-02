@@ -53,6 +53,20 @@ The helper is also used for the watchdog restore behavior: when **Continue
 after quit** is off, the helper restores normal lid-close sleep if Lid exits or
 stops checking in.
 
+## Diagnostics
+
+For helper, XPC, or sleep-state issues, collect a compact local snapshot:
+
+```bash
+./scripts/diagnose.sh
+```
+
+To inspect live Lid logs:
+
+```bash
+log stream --style compact --info --predicate 'subsystem == "top.qiyuey.lid"'
+```
+
 ## Controls
 
 - **Lid sleep prevention** keeps the Mac awake when the lid is closed.

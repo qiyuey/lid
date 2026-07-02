@@ -46,6 +46,20 @@ xattr -rd com.apple.quarantine "/Applications/Lid.app"
 
 Helper 也负责看门狗恢复：当 **退出后继续生效** 关闭时，如果 Lid 退出或停止发送心跳，Helper 会恢复正常的合盖睡眠。
 
+## 诊断
+
+遇到 Helper、XPC 通信或睡眠状态问题时，可以收集一份本机诊断快照：
+
+```bash
+./scripts/diagnose.sh
+```
+
+实时查看 Lid 日志：
+
+```bash
+log stream --style compact --info --predicate 'subsystem == "top.qiyuey.lid"'
+```
+
 ## 控制项
 
 - **合盖防睡眠**：合盖后仍然让 Mac 保持运行。

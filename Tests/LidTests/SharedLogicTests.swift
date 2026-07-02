@@ -73,6 +73,44 @@ final class SharedLogicTests: XCTestCase {
         XCTAssertFalse(Watchdog.shouldAutoRestore(lastHeartbeat: last, now: now, timeout: 90))
     }
 
+    // MARK: AutomaticHelperRepairGate
+
+    func testAutomaticHelperRepairGateStartsWhenHelperIsUsable() {
+        var gate = AutomaticHelperRepairGate(cooldown: 60)
+
+        XCTAssertTrue(gate.beginIfAllowed(
+            now: Date(timeIntervalSince1970: 1000),
+            helperInstalled: true,
+            helperNeedsApproval: false
+        ))
+    }
+
+    func testAutomaticHelperRepairGateBlocksWhenUnavailable() {
+        var gate = AutomaticHelperRepairGate(cooldown: 60)
+        let now = Date(timeIntervalSince1970: 1000)
+
+        XCTAssertFalse(gate.beginIfAllowed(now: now, helperInstalled: false, helperNeedsApproval: false))
+        XCTAssertFalse(gate.beginIfAllowed(now: now, helperInstalled: true, helperNeedsApproval: true))
+    }
+
+    func testAutomaticHelperRepairGateBlocksConcurrentRepair() {
+        var gate = AutomaticHelperRepairGate(cooldown: 60)
+        let now = Date(timeIntervalSince1970: 1000)
+
+        XCTAssertTrue(gate.beginIfAllowed(now: now, helperInstalled: true, helperNeedsApproval: false))
+        XCTAssertFalse(gate.beginIfAllowed(now: now + 120, helperInstalled: true, helperNeedsApproval: false))
+    }
+
+    func testAutomaticHelperRepairGateAllowsRetryAfterCooldown() {
+        var gate = AutomaticHelperRepairGate(cooldown: 60)
+        let now = Date(timeIntervalSince1970: 1000)
+
+        XCTAssertTrue(gate.beginIfAllowed(now: now, helperInstalled: true, helperNeedsApproval: false))
+        gate.finish()
+        XCTAssertFalse(gate.beginIfAllowed(now: now + 30, helperInstalled: true, helperNeedsApproval: false))
+        XCTAssertTrue(gate.beginIfAllowed(now: now + 61, helperInstalled: true, helperNeedsApproval: false))
+    }
+
     // MARK: SafetyPolicy
 
     func testSafetyDisablesOnLowBattery() {
