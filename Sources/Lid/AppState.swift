@@ -78,13 +78,9 @@ final class AppState: ObservableObject {
     private var helperRecheckInProgress = false
     private var heartbeatTimer: Timer?
     private var lastRequestedHelperWatchdogEnabled: Bool?
-    private var automaticHelperRepairGate = AutomaticHelperRepairGate(
-        cooldown: Timing.automaticHelperRepairCooldown
-    )
     private var stateChangeRequestID = 0
 
     private enum Timing {
-        static let automaticHelperRepairCooldown: TimeInterval = 60
         static let helperReadinessAttempts = 2
         static let helperReadinessRetryDelay: TimeInterval = 1
         static let helperApprovalPollInterval: TimeInterval = 1
@@ -104,7 +100,7 @@ final class AppState: ObservableObject {
         refreshHelperStatus()
         helperLifecycle.captureUsableBaseline()
         refreshState()
-        refreshHelperUsability(repairIfUnavailable: true, refreshStateWhenUsable: true)
+        refreshHelperUsability(refreshStateWhenUsable: true)
         refreshHelperRegistrationIfNeeded()
         refreshBattery()
         battery.start { [weak self] info in
@@ -233,13 +229,13 @@ final class AppState: ObservableObject {
         syncHelperStatus()
     }
 
-    /// When the bundled helper version changes, probe the registered daemon and
-    /// rebuild launchd's registration if the running helper is missing, stale, or
-    /// unreachable. Healthy helpers are left untouched, so app-only updates don't
-    /// needlessly prompt for approval.
+    /// When the bundled helper version changes, probe the registered daemon. If
+    /// it is missing or unreachable, stop short of automatic re-registration and
+    /// guide the user to Login Items instead. Repeated background register cycles
+    /// can make Background Task Management mark the helper as disallowed.
     private func refreshHelperRegistrationIfNeeded() {
         helperLifecycle.refreshRegistrationIfNeeded { [weak self] in
-            self?.repairHelper()
+            self?.markHelperUnavailableForUserAction()
         }
     }
 
@@ -275,10 +271,7 @@ final class AppState: ObservableObject {
                 }
                 self.stopHelperApprovalPolling()
                 if self.helperInstalled, !self.helperNeedsApproval {
-                    self.lastError = self.text.helperNoResponse
-                    self.repairHelperAutomatically { [weak self] in
-                        self?.refreshHelperUsability(refreshStateWhenUsable: true)
-                    }
+                    self.markHelperUnavailableForUserAction()
                 }
             }
         }
@@ -297,8 +290,7 @@ final class AppState: ObservableObject {
             if helperLifecycle.usingHelper {
                 lastError = nil
             } else {
-                lastError = text.helperNoResponse
-                repairHelper()
+                openLoginItems()
             }
             return
         }
@@ -394,11 +386,7 @@ final class AppState: ObservableObject {
                 if let err {
                     self.lastError = err
                     self.logger.error("Refresh state failed through helper: \(err, privacy: .public)")
-                    self.helperLifecycle.markUnusable()
-                    self.syncHelperStatus()
-                    self.repairHelperAutomatically { [weak self] in
-                        self?.refreshHelperUsability(refreshStateWhenUsable: true)
-                    }
+                    self.markHelperUnavailableForUserAction(message: err)
                     return
                 }
                 self.clearHelperAvailabilityMessage()
@@ -465,7 +453,7 @@ final class AppState: ObservableObject {
                     self.syncHelperStatus()
                     if userInitiated {
                         self.alerts.presentHelperFailure(message: message) { [weak self] in
-                            self?.repairHelper()
+                            self?.openLoginItems()
                         }
                     }
                     self.finishStateChange(requestID)
@@ -531,75 +519,9 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Re-register the privileged helper to refresh launchd's record, then report
-    /// the outcome. Used both automatically after a helper-version mismatch and
-    /// from the failure alert's "Reinstall Helper" action.
-    func repairHelper() {
-        repairHelper(showSuccessMessage: true)
-    }
-
-    private func repairHelper(showSuccessMessage: Bool,
-                              afterRepair: (() -> Void)? = nil,
-                              completion: (() -> Void)? = nil) {
-        helperLifecycle.repair { [weak self] errorMessage in
-            guard let self else { return }
-            self.syncHelperStatus()
-            if self.helperLifecycle.needsApproval {
-                self.logger.info("Helper repair completed but approval is required")
-                self.lastError = self.text.approveHelperThenTry
-                if showSuccessMessage {
-                    self.helper.openLoginItemsSettings()
-                }
-                self.startHelperApprovalPolling()
-                completion?()
-            } else if let errorMessage {
-                self.logger.error("Helper repair failed: \(errorMessage, privacy: .public)")
-                self.lastError = errorMessage
-                completion?()
-            } else {
-                self.logger.info("Helper repair completed")
-                self.ensureHelperWatchdogEnabled(force: true)
-                self.lastError = showSuccessMessage ? self.text.helperReinstalledMessage : nil
-                afterRepair?()
-                completion?()
-            }
-        }
-    }
-
-    private func repairHelperAutomatically(afterRepair: (() -> Void)? = nil) {
-        if automaticHelperRepairGate.isRepairInProgress {
-            logger.info("Skipping automatic helper repair because repair is already running")
-            return
-        }
-
-        refreshHelperStatus()
-        guard helperInstalled else {
-            logger.info("Skipping automatic helper repair because helper is not installed")
-            lastError = helperNeedsApproval ? text.approveHelperThenTry : text.installHelperRequiredMessage
-            return
-        }
-
-        guard automaticHelperRepairGate.beginIfAllowed(
-            now: Date(),
-            helperInstalled: helperInstalled,
-            helperNeedsApproval: helperNeedsApproval
-        ) else {
-            logger.info("Skipping automatic helper repair")
-            return
-        }
-
-        logger.info("Starting automatic helper repair")
-        repairHelper(showSuccessMessage: false,
-                     afterRepair: afterRepair) { [weak self] in
-            self?.automaticHelperRepairGate.finish()
-        }
-    }
-
-    private func refreshHelperUsability(repairIfUnavailable: Bool = false,
-                                        refreshStateWhenUsable: Bool = false) {
-        let maxAttempts = repairIfUnavailable ? Timing.helperReadinessAttempts : 1
+    private func refreshHelperUsability(refreshStateWhenUsable: Bool = false) {
         helperLifecycle.refreshUsability(
-            maxAttempts: maxAttempts,
+            maxAttempts: Timing.helperReadinessAttempts,
             retryDelay: Timing.helperReadinessRetryDelay
         ) { [weak self] usable in
             guard let self else { return }
@@ -619,15 +541,17 @@ final class AppState: ObservableObject {
                 return
             }
             self.stopHelperApprovalPolling()
-            guard repairIfUnavailable, self.helperInstalled, !self.helperNeedsApproval else {
-                return
-            }
-
-            self.lastError = self.text.helperNoResponse
-            self.repairHelperAutomatically { [weak self] in
-                self?.refreshHelperUsability(refreshStateWhenUsable: true)
+            if self.helperInstalled, !self.helperNeedsApproval {
+                self.markHelperUnavailableForUserAction()
             }
         }
+    }
+
+    private func markHelperUnavailableForUserAction(message: String? = nil) {
+        helperLifecycle.markUnusable()
+        syncHelperStatus()
+        stopHelperApprovalPolling()
+        lastError = message ?? helperUnavailableText
     }
 
     private func syncHelperStatus() {
@@ -695,7 +619,7 @@ final class AppState: ObservableObject {
                 self.lastRequestedHelperWatchdogEnabled = nil
                 self.lastError = err ?? self.text.watchdogPolicyError
                 self.logger.error("Failed to update helper watchdog policy: \(self.lastError ?? "unknown", privacy: .public)")
-                self.repairHelperAutomatically()
+                self.markHelperUnavailableForUserAction(message: self.lastError)
             }
         }
     }
@@ -765,11 +689,7 @@ final class AppState: ObservableObject {
                 self.syncHelperStatus()
                 if userInitiated {
                     self.alerts.presentHelperFailure(message: err) { [weak self] in
-                        self?.repairHelper()
-                    }
-                } else {
-                    self.repairHelperAutomatically {
-                        self.refreshState()
+                        self?.openLoginItems()
                     }
                 }
                 self.finishStateChange(requestID)
@@ -784,7 +704,7 @@ final class AppState: ObservableObject {
                 self.lastError = message
                 if userInitiated {
                     self.alerts.presentHelperFailure(message: message) { [weak self] in
-                        self?.repairHelper()
+                        self?.openLoginItems()
                     }
                 }
                 self.finishStateChange(requestID)

@@ -7,19 +7,23 @@ cask "lid" do
   desc "Control MacBook lid-close sleep for long-running work"
   homepage "https://github.com/qiyuey/lid"
 
-  depends_on macos: :tahoe
-
   livecheck do
     url :url
     strategy :github_latest
   end
 
   auto_updates true
+  depends_on macos: :tahoe
 
   app "Lid.app"
 
-  uninstall quit:      "top.qiyuey.lid",
-            launchctl: "top.qiyuey.lid.helper",
+  uninstall_preflight do
+    lid = "#{appdir}/Lid.app/Contents/MacOS/Lid"
+    system_command lid, args: ["--unregister-helper"], must_succeed: false if File.executable?(lid)
+  end
+
+  uninstall launchctl: "top.qiyuey.lid.helper",
+            quit:      "top.qiyuey.lid",
             delete:    [
               "/Library/LaunchDaemons/top.qiyuey.lid.helper.plist",
               "/Library/PrivilegedHelperTools/top.qiyuey.lid.helper",

@@ -267,11 +267,11 @@ private struct HelperRow: View {
             .buttonStyle(.glassProminent)
             .help(text.onboardingOpenLoginItems)
         } else if state.helperInstalled {
-            Button(text.repair) {
-                state.installHelper()
+            Button(text.open) {
+                state.openLoginItems()
             }
             .buttonStyle(.glassProminent)
-            .help(text.reinstallHelper)
+            .help(text.onboardingOpenLoginItems)
         } else {
             Button(text.install) {
                 state.installHelper()

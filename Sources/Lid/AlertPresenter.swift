@@ -48,16 +48,16 @@ struct AlertPresenter {
         alert.runModal()
     }
 
-    func presentHelperFailure(message: String, onReinstall: () -> Void) {
+    func presentHelperFailure(message: String, onOpenLoginItems: () -> Void) {
         activateApp()
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = text.turnOnFailedTitle
         alert.informativeText = text.helperFailureText(message)
-        alert.addButton(withTitle: text.reinstallHelper)
+        alert.addButton(withTitle: text.onboardingOpenLoginItems)
         alert.addButton(withTitle: text.cancel)
         if alert.runModal() == .alertFirstButtonReturn {
-            onReinstall()
+            onOpenLoginItems()
         }
     }
 

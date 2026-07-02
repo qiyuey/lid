@@ -52,7 +52,6 @@ struct AppStrings: Sendable {
     var open: String { pick("Open", "打开") }
     var install: String { pick("Install", "安装") }
     var remove: String { pick("Remove", "移除") }
-    var repair: String { pick("Repair", "修复") }
     var check: String { pick("Check", "检查") }
     var done: String { pick("Done", "完成") }
     var `continue`: String { pick("Continue", "继续") }
@@ -149,11 +148,9 @@ struct AppStrings: Sendable {
              "Lid 无法恢复正常睡眠，因此保留了后台 Helper。\n\n\(message)")
     }
     func helperFailureText(_ message: String) -> String {
-        pick("\(message)\n\nThis usually happens after an update. Reinstalling the background helper fixes it.",
-             "\(message)\n\n这通常发生在更新后。重新安装后台 Helper 即可修复。")
+        pick("\(message)\n\nOpen Login Items, allow Lid's background helper, then try again.",
+             "\(message)\n\n请打开登录项，允许 Lid 的后台 Helper，然后再次尝试。")
     }
-    var reinstallHelper: String { pick("Reinstall Helper...", "重新安装 Helper...") }
-    var helperReinstalledMessage: String { pick("Background helper reinstalled. Try the switch again.", "后台 Helper 已重新安装，请再次尝试开关。") }
     var watchdogPolicyError: String { pick("The background helper couldn’t update its watchdog policy.", "后台 Helper 无法更新看门狗策略。") }
 
     func toggleFailedTitle(target: Bool) -> String {
