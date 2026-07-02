@@ -28,6 +28,11 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
     private let watchdogTimeout: TimeInterval = 90
     private var watchdogTimer: DispatchSourceTimer?
 
+    private enum Verification {
+        static let attempts = 5
+        static let retryDelay: TimeInterval = 0.1
+    }
+
     override init() {
         super.init()
         startWatchdog()
@@ -41,6 +46,9 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
             if result.ok {
                 self.keepAwake = enabled
                 self.lastHeartbeat = Date()
+                if enabled {
+                    self.watchdogEnabled = true
+                }
             }
             reply(result.ok, result.error)
         }
@@ -57,12 +65,14 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
     }
 
     func getState(withReply reply: @escaping @Sendable (Bool) -> Void) {
-        let out = Self.capture("/usr/bin/pmset", ["-g"]) ?? ""
-        reply(PowerParsers.isSleepDisabled(pmsetG: out))
+        queue.async {
+            reply(self.syncRuntimeStateFromSystem() ?? false)
+        }
     }
 
     func heartbeat(withReply reply: @escaping @Sendable (Bool) -> Void) {
         queue.async {
+            self.syncRuntimeStateFromSystem()
             self.lastHeartbeat = Date()
             reply(true)
         }
@@ -82,8 +92,10 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
             if Watchdog.shouldAutoRestore(lastHeartbeat: self.lastHeartbeat,
                                           now: Date(),
                                           timeout: self.watchdogTimeout) {
-                _ = self.runPmset(disableSleep: false)
-                self.keepAwake = false
+                let result = self.runPmset(disableSleep: false)
+                if result.ok || Self.currentSleepDisabled() == false {
+                    self.keepAwake = false
+                }
             }
         }
         timer.resume()
@@ -94,6 +106,10 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
 
     @discardableResult
     private func runPmset(disableSleep: Bool) -> (ok: Bool, error: String?) {
+        if Self.currentSleepDisabled() == disableSleep {
+            return (true, nil)
+        }
+
         let result = ProcessRunner.run("/usr/bin/pmset",
                                        ["-a", "disablesleep", disableSleep ? "1" : "0"],
                                        timeout: 10)
@@ -103,10 +119,36 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
                 : result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             return (false, msg.isEmpty ? "pmset exited \(result.exitCode)" : msg)
         }
-        return (true, nil)
+
+        var observed: Bool?
+        for attempt in 1...Verification.attempts {
+            observed = Self.currentSleepDisabled()
+            if observed == disableSleep {
+                return (true, nil)
+            }
+            if attempt < Verification.attempts {
+                Thread.sleep(forTimeInterval: Verification.retryDelay)
+            }
+        }
+
+        let requested = disableSleep ? "1" : "0"
+        let actual = observed.map { $0 ? "1" : "0" } ?? "unavailable"
+        return (false, "pmset reported success, but SleepDisabled is \(actual) after requesting \(requested)")
+    }
+
+    @discardableResult
+    private func syncRuntimeStateFromSystem() -> Bool? {
+        guard let actual = Self.currentSleepDisabled() else { return nil }
+        keepAwake = actual
+        return actual
     }
 
     private static func capture(_ path: String, _ args: [String]) -> String? {
         ProcessRunner.capture(path, args)
+    }
+
+    private static func currentSleepDisabled() -> Bool? {
+        guard let out = capture("/usr/bin/pmset", ["-g"]) else { return nil }
+        return PowerParsers.sleepDisabledValue(pmsetG: out)
     }
 }

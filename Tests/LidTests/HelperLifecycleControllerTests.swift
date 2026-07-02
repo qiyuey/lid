@@ -50,7 +50,20 @@ final class HelperLifecycleControllerTests: XCTestCase {
         let becameUsable = try lifecycle.register()
 
         XCTAssertTrue(becameUsable)
+        XCTAssertEqual(helper.checkReachableCalls, 1)
         XCTAssertEqual(store.loadLastHelperVersion(), expectedHelperVersion)
+    }
+
+    func testRegisterDoesNotStoreVersionWhenImmediatelyUsableButUnreachable() throws {
+        let store = makeStore()
+        let helper = FakeHelper(isEnabled: false, reachable: false)
+        let lifecycle = makeLifecycle(helper: helper, store: store)
+
+        let becameUsable = try lifecycle.register()
+
+        XCTAssertTrue(becameUsable)
+        XCTAssertEqual(helper.checkReachableCalls, 1)
+        XCTAssertEqual(store.loadLastHelperVersion(), "")
     }
 
     func testRecheckStoresVersionWhenHelperBecomesUsable() {
@@ -62,7 +75,21 @@ final class HelperLifecycleControllerTests: XCTestCase {
         helper.isEnabled = true
 
         XCTAssertTrue(lifecycle.recheckBecameUsable())
+        XCTAssertEqual(helper.checkReachableCalls, 1)
         XCTAssertEqual(store.loadLastHelperVersion(), expectedHelperVersion)
+    }
+
+    func testRecheckDoesNotStoreVersionWhenHelperBecomesUsableButUnreachable() {
+        let store = makeStore()
+        let helper = FakeHelper(isEnabled: false, reachable: false)
+        let lifecycle = makeLifecycle(helper: helper, store: store)
+
+        lifecycle.captureUsableBaseline()
+        helper.isEnabled = true
+
+        XCTAssertTrue(lifecycle.recheckBecameUsable())
+        XCTAssertEqual(helper.checkReachableCalls, 1)
+        XCTAssertEqual(store.loadLastHelperVersion(), "")
     }
 
     func testRepairStoresVersionOnlyAfterSuccessfulUsableRegistration() {
@@ -74,7 +101,21 @@ final class HelperLifecycleControllerTests: XCTestCase {
         lifecycle.repair { errorMessage = $0 }
 
         XCTAssertNil(errorMessage)
+        XCTAssertEqual(helper.checkReachableCalls, 1)
         XCTAssertEqual(store.loadLastHelperVersion(), expectedHelperVersion)
+    }
+
+    func testRepairRequiresReachableHelperBeforeStoringVersion() {
+        let store = makeStore()
+        let helper = FakeHelper(isEnabled: false, reachable: false)
+        let lifecycle = makeLifecycle(helper: helper, store: store)
+
+        var errorMessage: String?
+        lifecycle.repair { errorMessage = $0 }
+
+        XCTAssertEqual(errorMessage, "The background helper isn’t responding.")
+        XCTAssertEqual(helper.checkReachableCalls, 1)
+        XCTAssertEqual(store.loadLastHelperVersion(), "")
     }
 
     func testRepairFailureDoesNotStoreVersion() {

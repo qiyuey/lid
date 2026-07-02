@@ -58,7 +58,7 @@ final class HelperLifecycleController {
         let wasUsable = usableBaseline
         refreshStatus()
         if usingHelper {
-            storeCurrentHelperVersion()
+            storeCurrentHelperVersionIfReachable()
         }
         usableBaseline = usingHelper
         return !wasUsable && usingHelper
@@ -69,7 +69,7 @@ final class HelperLifecycleController {
         try helper.register()
         refreshStatus()
         if usingHelper {
-            storeCurrentHelperVersion()
+            storeCurrentHelperVersionIfReachable()
         }
         usableBaseline = usingHelper
         return !wasUsable && usingHelper
@@ -97,10 +97,30 @@ final class HelperLifecycleController {
                 return
             }
             self.refreshStatus()
-            if errorMessage == nil, self.usingHelper {
-                self.storeCurrentHelperVersion()
+            self.usableBaseline = self.usingHelper
+            guard errorMessage == nil else {
+                completion(errorMessage)
+                return
             }
-            completion(errorMessage)
+
+            guard self.usingHelper else {
+                completion(nil)
+                return
+            }
+
+            self.helper.checkReachable { [weak self] reachable in
+                guard let self else {
+                    completion(nil)
+                    return
+                }
+                if reachable {
+                    self.storeCurrentHelperVersion()
+                    completion(nil)
+                } else {
+                    self.clearStoredHelperVersion()
+                    completion("The background helper isn’t responding.")
+                }
+            }
         }
     }
 
@@ -110,6 +130,17 @@ final class HelperLifecycleController {
 
     private func clearStoredHelperVersion() {
         store.clearLastHelperVersion()
+    }
+
+    private func storeCurrentHelperVersionIfReachable() {
+        helper.checkReachable { [weak self] reachable in
+            guard let self else { return }
+            if reachable {
+                self.storeCurrentHelperVersion()
+            } else {
+                self.clearStoredHelperVersion()
+            }
+        }
     }
 
     private func helperRegistrationFingerprint() -> String {

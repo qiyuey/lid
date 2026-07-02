@@ -67,7 +67,7 @@ private struct PrimaryToggleRow: View {
                 set: { value in state.setEnabled(value, userInitiated: true) }
             ))
             .menuSwitchStyle()
-            .disabled(!state.usingHelper)
+            .disabled(!state.usingHelper || state.isChanging)
             .help(state.usingHelper ? text.primaryToggleLabel : text.installHelperRequiredMessage)
         }
     }

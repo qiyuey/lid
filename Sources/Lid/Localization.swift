@@ -129,6 +129,11 @@ struct AppStrings: Sendable {
     var approveHelperThenTry: String { pick("Approve Lid in System Settings > Login Items, then try the switch again.", "请在系统设置 > 登录项中批准 Lid，然后再次尝试开关。") }
     var helperRemovedMessage: String { pick("Background helper removed. Lid will use the administrator prompt until you install it again.", "后台 Helper 已移除。重新安装前，Lid 会使用管理员密码提示。") }
     var helperNoResponse: String { pick("The background helper didn’t respond.", "后台 Helper 没有响应。") }
+    func helperStateMismatch(target: Bool) -> String {
+        target
+            ? pick("The background helper reported success, but SleepDisabled is still off.", "后台 Helper 返回成功，但 SleepDisabled 仍未开启。")
+            : pick("The background helper reported success, but SleepDisabled is still on.", "后台 Helper 返回成功，但 SleepDisabled 仍未关闭。")
+    }
     var continueAfterQuitHelperError: String { pick("Couldn’t tell the background helper to continue after quit.", "无法通知后台 Helper 在退出后继续生效。") }
     var turnOffFailedTitle: String { pick("Couldn’t turn lid sleep prevention off", "无法关闭合盖防睡眠") }
     var turnOnFailedTitle: String { pick("Couldn’t turn lid sleep prevention on", "无法开启合盖防睡眠") }

@@ -24,6 +24,21 @@ final class SharedLogicTests: XCTestCase {
 
     func testSleepDisabledMissing() {
         XCTAssertFalse(PowerParsers.isSleepDisabled(pmsetG: "Currently in use:\n standby 1"))
+        XCTAssertNil(PowerParsers.sleepDisabledValue(pmsetG: "Currently in use:\n standby 1"))
+    }
+
+    func testSleepDisabledDoesNotTrustClamshellCausesSleep() {
+        let out = """
+        System-wide power settings:
+         SleepDisabled        0
+        """
+        let ioreg = """
+            "AppleClamshellCausesSleep" = No
+            "SleepDisabled" = No
+        """
+
+        XCTAssertFalse(PowerParsers.isSleepDisabled(pmsetG: out))
+        XCTAssertFalse(PowerParsers.isSleepDisabled(pmsetG: ioreg))
     }
 
     // MARK: BatteryParsers

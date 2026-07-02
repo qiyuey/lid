@@ -104,10 +104,18 @@ final class HelperManager {
         return conn
     }
 
+    private func resetConnection() {
+        connection?.invalidate()
+        connection = nil
+    }
+
     private func remote(_ onError: @escaping @MainActor @Sendable (String) -> Void) -> LidHelperProtocol? {
-        let errorHandler: @Sendable (Error) -> Void = { error in
+        let errorHandler: @Sendable (Error) -> Void = { [weak self] error in
             let message = error.localizedDescription
-            Task { @MainActor in onError(message) }
+            Task { @MainActor in
+                self?.resetConnection()
+                onError(message)
+            }
         }
         let proxy = connect().remoteObjectProxyWithErrorHandler(errorHandler)
         return proxy as? LidHelperProtocol
@@ -127,7 +135,11 @@ final class HelperManager {
     }
 
     func getState(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
-        callWithTimeout(completion: { ok, _ in completion(ok) }) { proxy, done in
+        getStateResult { value, _ in completion(value) }
+    }
+
+    func getStateResult(completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
+        callWithTimeout(completion: completion) { proxy, done in
             proxy.getState { value in done(value, nil) }
         }
     }
@@ -165,8 +177,12 @@ final class HelperManager {
             finish(false, "No helper connection")
             return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
-            finish(false, "The background helper isn’t responding.")
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in
+            Task { @MainActor in
+                guard gate.claim() else { return }
+                self?.resetConnection()
+                completion(false, "The background helper isn’t responding.")
+            }
         }
         body(proxy) { ok, err in finish(ok, err) }
     }
