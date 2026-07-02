@@ -19,6 +19,21 @@ tucked away.
 Get the latest signed macOS build from
 [GitHub Releases](https://github.com/qiyuey/lid/releases).
 
+### Homebrew
+
+```bash
+brew tap qiyuey/tap
+brew install --cask lid
+```
+
+To upgrade later:
+
+```bash
+brew upgrade --cask lid
+```
+
+### Manual Download
+
 Lid requires macOS 26 or later. After downloading, move `Lid.app` to
 `/Applications` and open it from the menu bar.
 

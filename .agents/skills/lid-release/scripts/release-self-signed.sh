@@ -1,39 +1,37 @@
 #!/bin/bash
-# Publish a self-signed Lid release.
-#
-# This is the single high-level release entry point for the free/self-signed
-# distribution path. It intentionally does not support Developer ID notarization.
+# Prepare a self-signed Lid release by committing a version bump and pushing a
+# release tag. GitHub Actions performs the build, GitHub Release, appcast, and
+# Homebrew tap publishing work.
 set -euo pipefail
 
-APP_NAME="Lid"
 APPCAST="docs/appcast.xml"
-PACKAGE_SCRIPT="scripts/package-self-signed-dmg.sh"
-SPARKLE_ACCOUNT="${SPARKLE_ACCOUNT:-qiyuey-lid}"
-DOWNLOAD_URL_PREFIX="${DOWNLOAD_URL_PREFIX:-https://github.com/qiyuey/lid/releases/latest/download}"
+WORKFLOW_FILE="release.yml"
 
 VERSION=""
 DRY_RUN=0
+NO_WATCH=0
 
 usage() {
     cat <<USAGE
 Usage:
-  .agents/skills/lid-release/scripts/release-self-signed.sh [--version YYYY.M.N] [--dry-run]
+  .agents/skills/lid-release/scripts/release-self-signed.sh [--version YYYY.M.N] [--dry-run] [--no-watch]
 
-Publishes the next self-signed Lid GitHub release:
+Creates a tag-driven self-signed Lid release:
   1. resolve/bump calendar version
   2. generate Xcode project
-  3. run Lid-CI tests
-  4. commit and push the version bump
-  5. build and verify the self-signed DMG
-  6. create GitHub Release and upload the DMG
-  7. generate Sparkle appcast
-  8. commit and push appcast
-  9. verify release/tag/main state
+  3. run Lid-CI tests locally
+  4. commit and push the version bump to main
+  5. create and push vYYYY.M.N
+  6. watch the GitHub Actions release workflow
+
+GitHub Actions then builds the DMG, creates the GitHub Release, updates
+docs/appcast.xml, and pushes the Homebrew cask to qiyuey/homebrew-tap.
 
 Options:
   --version YYYY.M.N  Release a specific version instead of the next calendar version.
-  --dry-run          Print the resolved version and release plan without changing files.
-  -h, --help         Show this help.
+  --dry-run           Print the resolved version and release plan without changing files.
+  --no-watch          Push the tag and print the workflow lookup command without waiting.
+  -h, --help          Show this help.
 USAGE
 }
 
@@ -61,6 +59,10 @@ while [ "$#" -gt 0 ]; do
             DRY_RUN=1
             shift
             ;;
+        --no-watch)
+            NO_WATCH=1
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -76,15 +78,12 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 cd "$ROOT"
 
 [ -f "project.yml" ] || die "project.yml not found; run from the Lid repository"
-[ -x "$PACKAGE_SCRIPT" ] || die "$PACKAGE_SCRIPT is missing or not executable"
+[ -f ".github/workflows/$WORKFLOW_FILE" ] || die ".github/workflows/$WORKFLOW_FILE is missing"
 
 require_cmd git
 require_cmd gh
 require_cmd xcodegen
 require_cmd xcodebuild
-require_cmd hdiutil
-require_cmd codesign
-require_cmd /usr/libexec/PlistBuddy
 require_cmd /usr/bin/perl
 
 DIRTY_STATUS="$(git status --porcelain=v1)"
@@ -163,24 +162,27 @@ next_calendar_version() {
     '
 }
 
-latest_git_tag() {
-    extract_tag_versions | awk -F. '
-        function gt(a1,a2,a3,b1,b2,b3) {
-            return (a1>b1 || (a1==b1 && (a2>b2 || (a2==b2 && a3>b3))))
-        }
-        /^[0-9]+\.[0-9]+\.[0-9]+$/ && gt($1+0,$2+0,$3+0,y,m,p) {
-            y=$1+0; m=$2+0; p=$3+0; seen=1
-        }
-        END { if (seen) printf "v%d.%d.%d\n", y, m, p }
-    '
-}
+wait_for_release_run() {
+    local sha="$1" run_id run_url
 
-sparkle_tool() {
-    local name="$1" hit
-    [ -x "scripts/sparkle/bin/$name" ] && { echo "scripts/sparkle/bin/$name"; return 0; }
-    hit="$(command -v "$name" 2>/dev/null || true)"
-    [ -n "$hit" ] || die "could not find Sparkle tool '$name'"
-    echo "$hit"
+    log "wait for release workflow to start"
+    for _ in $(seq 1 60); do
+        run_id="$(gh run list \
+            --workflow "$WORKFLOW_FILE" \
+            --limit 20 \
+            --json databaseId,event,headSha \
+            --jq ".[] | select(.event == \"push\" and .headSha == \"$sha\") | .databaseId" \
+            | head -n1)"
+        if [ -n "$run_id" ]; then
+            break
+        fi
+        sleep 5
+    done
+
+    [ -n "${run_id:-}" ] || die "release workflow did not start for commit $sha"
+    run_url="$(gh run view "$run_id" --json url --jq .url)"
+    echo "Release workflow: $run_url"
+    gh run watch "$run_id" --exit-status
 }
 
 if [ "$DRY_RUN" = "0" ]; then
@@ -210,7 +212,6 @@ if [ -n "${LAST_VERSION:-}" ] && ! version_gt "$VERSION" "$LAST_VERSION"; then
 fi
 
 TAG="v$VERSION"
-DMG="build/self-signed/${APP_NAME}-${VERSION}-self-signed.dmg"
 
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
     die "tag already exists locally: $TAG"
@@ -219,26 +220,21 @@ if gh release view "$TAG" >/dev/null 2>&1; then
     die "GitHub Release already exists: $TAG"
 fi
 
-PREVIOUS_TAG="$(latest_git_tag)"
-
 if [ "$DRY_RUN" = "1" ]; then
     cat <<DRYRUN
 Self-signed Lid release dry run
-  version:        $VERSION
-  tag:            $TAG
-  previous tag:   ${PREVIOUS_TAG:-none}
-  dmg:            $DMG
-  branch:         $BRANCH
+  version:      $VERSION
+  tag:          $TAG
+  branch:       $BRANCH
+  workflow:     .github/workflows/$WORKFLOW_FILE
 
 Planned live steps:
   - update project.yml MARKETING_VERSION/CURRENT_PROJECT_VERSION to $VERSION
   - run xcodegen generate
-  - run Lid-CI tests
-  - commit and push version bump
-  - run $PACKAGE_SCRIPT
-  - create GitHub Release $TAG with DMG asset
-  - generate and commit docs/appcast.xml
-  - push main and verify release/tag/main
+  - run Lid-CI tests locally
+  - commit and push version bump to main
+  - create and push tag $TAG
+  - GitHub Actions builds DMG, creates Release, updates appcast, and updates qiyuey/homebrew-tap
 DRYRUN
     exit 0
 fi
@@ -268,87 +264,22 @@ fi
 git commit -m "chore(release): bump version to $VERSION"
 git push
 
-log "build self-signed DMG"
-"$PACKAGE_SCRIPT"
-[ -f "$DMG" ] || die "expected DMG was not produced: $DMG"
-codesign --verify --verbose=2 "$DMG"
-hdiutil verify "$DMG" >/dev/null
-
-log "verify app inside DMG"
-MOUNT="$(mktemp -d /tmp/lid-release.XXXXXX)"
-cleanup_mount() {
-    hdiutil detach "$MOUNT" >/dev/null 2>&1 || true
-    rmdir "$MOUNT" >/dev/null 2>&1 || true
-}
-trap cleanup_mount EXIT
-hdiutil attach "$DMG" -mountpoint "$MOUNT" -nobrowse -readonly >/dev/null
-APP="$MOUNT/$APP_NAME.app"
-APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
-APP_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")"
-[ "$APP_VERSION" = "$VERSION" ] || die "DMG app version is $APP_VERSION, expected $VERSION"
-[ "$APP_BUILD" = "$VERSION" ] || die "DMG app build is $APP_BUILD, expected $VERSION"
-codesign --verify --deep --strict --verbose=2 "$APP"
-cleanup_mount
-trap - EXIT
-
-log "create release notes"
-NOTES_FILE="build/self-signed/release-notes-$VERSION.md"
-mkdir -p "$(dirname "$NOTES_FILE")"
-{
-    echo "Lid helps your Mac keep working with the lid closed, so long-running agent sessions, builds, downloads, and remote connections can continue while the MacBook is tucked away."
-    echo
-    echo "## What's New"
-    echo
-    if [ -n "$PREVIOUS_TAG" ]; then
-        git log --reverse --pretty=format:'- %s' "$PREVIOUS_TAG"..HEAD \
-            | grep -Ev '^- chore\(release\): (bump version|update appcast)' || true
-    else
-        git log --reverse --pretty=format:'- %s' HEAD \
-            | grep -Ev '^- chore\(release\): (bump version|update appcast)' || true
-    fi
-    echo
-    echo "## Install Note"
-    echo
-    echo "Lid requires macOS 26 or later."
-    echo
-    echo 'The attached DMG is self-signed and not notarized. If macOS blocks first launch, right-click `Lid.app` in Finder and choose **Open**, or allow it in **System Settings > Privacy & Security**.'
-} > "$NOTES_FILE"
-
-if ! grep -q '^- ' "$NOTES_FILE"; then
-    /usr/bin/perl -0pi -e 's/## What'\''s New\n\n/## What'\''s New\n\n- Maintenance release.\n/' "$NOTES_FILE"
-fi
-
-log "create GitHub Release $TAG"
 TARGET_COMMIT="$(git rev-parse HEAD)"
-gh release create "$TAG" "$DMG" --target "$TARGET_COMMIT" --title "Lid $VERSION" --notes-file "$NOTES_FILE"
 
-log "generate Sparkle appcast"
-GENERATE_APPCAST="$(sparkle_tool generate_appcast)"
-rm -rf updates
-mkdir -p updates
-cp "$DMG" updates/
-"$GENERATE_APPCAST" --account "$SPARKLE_ACCOUNT" --download-url-prefix "$DOWNLOAD_URL_PREFIX/" updates
-cp updates/appcast.xml "$APPCAST"
+log "create and push release tag $TAG"
+git tag -a "$TAG" -m "Lid $VERSION"
+git push origin "$TAG"
 
-log "commit and push appcast"
-git add "$APPCAST"
-if git diff --cached --quiet; then
-    die "$APPCAST did not change"
+if [ "$NO_WATCH" = "1" ]; then
+    echo "Tag pushed: $TAG"
+    echo "Watch with: gh run list --workflow $WORKFLOW_FILE --limit 5"
+else
+    wait_for_release_run "$TARGET_COMMIT"
 fi
-git commit -m "chore(release): update appcast for $VERSION"
-git push
-
-log "verify published state"
-git fetch origin "refs/tags/$TAG:refs/tags/$TAG" >/dev/null 2>&1 || true
-gh release view "$TAG" --json tagName,name,isDraft,isPrerelease,url,assets,publishedAt,targetCommitish \
-    --jq '{tagName,name,isDraft,isPrerelease,url,publishedAt,targetCommitish,assets:[.assets[].name]}'
-git ls-remote --exit-code --tags origin "$TAG" >/dev/null
-git ls-remote --exit-code origin refs/heads/main >/dev/null
 
 if [ -n "$(git status --porcelain=v1)" ]; then
     git status --short
-    die "release completed, but tracked working tree is not clean"
+    die "release tag pushed, but working tree is not clean"
 fi
 
-log "published $TAG"
-echo "DMG: $DMG"
+log "release tag pushed: $TAG"

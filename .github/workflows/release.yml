@@ -1,0 +1,205 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish self-signed release
+    runs-on: macos-26
+    env:
+      APP_NAME: Lid
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      LID_CERT_P12_BASE64: ${{ secrets.LID_SELF_SIGNED_CERT_P12_BASE64 }}
+      LID_CERT_PASSWORD: ${{ secrets.LID_SELF_SIGNED_CERT_PASSWORD }}
+      LID_SELF_SIGNED_CERT_CN: Lid Local Self-Signed Code Signing
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$ ]]; then
+            echo "Invalid release tag: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          MARKETING_VERSION=$(/usr/bin/sed -n 's/.*MARKETING_VERSION: "\([^"]*\)".*/\1/p' project.yml | head -n1)
+          CURRENT_PROJECT_VERSION=$(/usr/bin/sed -n 's/.*CURRENT_PROJECT_VERSION: "\([^"]*\)".*/\1/p' project.yml | head -n1)
+          test "$MARKETING_VERSION" = "$VERSION"
+          test "$CURRENT_PROJECT_VERSION" = "$VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          echo "DMG=build/self-signed/Lid-$VERSION-self-signed.dmg" >> "$GITHUB_ENV"
+
+      - name: Check release secrets
+        run: |
+          set -euo pipefail
+          test -n "$LID_CERT_P12_BASE64"
+          test -n "$LID_CERT_PASSWORD"
+          test -n "$SPARKLE_PRIVATE_KEY"
+          test -n "$HOMEBREW_TAP_TOKEN"
+
+      - name: Install tools
+        run: brew install xcodegen
+
+      - name: Import self-signed signing certificate
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/lid-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          P12="$RUNNER_TEMP/lid-self-signed.p12"
+          CERT="$RUNNER_TEMP/lid-self-signed.crt"
+
+          printf '%s' "$LID_CERT_P12_BASE64" | base64 --decode > "$P12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$P12" \
+            -k "$KEYCHAIN" \
+            -P "$LID_CERT_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security \
+            -T /usr/bin/xcodebuild
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN"
+          security find-certificate -c "$LID_SELF_SIGNED_CERT_CN" -p "$KEYCHAIN" > "$CERT"
+          security add-trusted-cert -r trustRoot -p codeSign -k "$KEYCHAIN" "$CERT"
+
+          echo "LID_SELF_SIGNED_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Test
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -scheme Lid-CI \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build self-signed DMG
+        run: ./scripts/package-self-signed-dmg.sh
+
+      - name: Verify DMG contents
+        run: |
+          set -euo pipefail
+          test -f "$DMG"
+          codesign --verify --verbose=2 "$DMG"
+          hdiutil verify "$DMG" >/dev/null
+
+          MOUNT="$(mktemp -d /tmp/lid-release.XXXXXX)"
+          hdiutil attach "$DMG" -mountpoint "$MOUNT" -nobrowse -readonly >/dev/null
+          trap 'hdiutil detach "$MOUNT" >/dev/null || true; rmdir "$MOUNT" 2>/dev/null || true' EXIT
+
+          APP="$MOUNT/Lid.app"
+          APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+          APP_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")"
+          test "$APP_VERSION" = "$VERSION"
+          test "$APP_BUILD" = "$VERSION"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Create release notes
+        run: |
+          set -euo pipefail
+          PREVIOUS_TAG="$(git tag --sort=-v:refname | grep -v "^$TAG$" | head -n1 || true)"
+          NOTES="build/self-signed/release-notes-$VERSION.md"
+          mkdir -p "$(dirname "$NOTES")"
+          {
+            echo "Lid helps your Mac keep working with the lid closed, so long-running agent sessions, builds, downloads, and remote connections can continue while the MacBook is tucked away."
+            echo
+            echo "## What's New"
+            echo
+            if [ -n "$PREVIOUS_TAG" ]; then
+              git log --reverse --pretty=format:'- %s' "$PREVIOUS_TAG"..HEAD | grep -Ev '^- chore\(release\): (bump version|update appcast)' || true
+            else
+              git log --reverse --pretty=format:'- %s' HEAD | grep -Ev '^- chore\(release\): (bump version|update appcast)' || true
+            fi
+            echo
+            echo "## Install Note"
+            echo
+            echo "Lid requires macOS 26 or later."
+            echo
+            echo 'The attached DMG is self-signed and not notarized. If macOS blocks first launch, right-click `Lid.app` in Finder and choose **Open**, or allow it in **System Settings > Privacy & Security**.'
+          } > "$NOTES"
+
+          if ! grep -q '^- ' "$NOTES"; then
+            /usr/bin/perl -0pi -e 's/## What'\''s New\n\n/## What'\''s New\n\n- Maintenance release.\n/' "$NOTES"
+          fi
+          echo "NOTES=$NOTES" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "Lid $VERSION" --notes-file "$NOTES" --latest
+            gh release upload "$TAG" "$DMG" --clobber
+          else
+            gh release create "$TAG" "$DMG" --title "Lid $VERSION" --notes-file "$NOTES" --latest
+          fi
+
+      - name: Generate Sparkle appcast
+        run: |
+          set -euo pipefail
+          rm -rf updates
+          mkdir -p updates
+          cp "$DMG" updates/
+          printf '%s' "$SPARKLE_PRIVATE_KEY" \
+            | scripts/sparkle/bin/generate_appcast \
+                --ed-key-file - \
+                --download-url-prefix "https://github.com/qiyuey/lid/releases/latest/download/" \
+                updates
+          cp updates/appcast.xml "$RUNNER_TEMP/appcast.xml"
+
+      - name: Commit appcast to main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main:refs/remotes/origin/main
+          git checkout -B main origin/main
+          cp "$RUNNER_TEMP/appcast.xml" docs/appcast.xml
+          git add docs/appcast.xml
+          if git diff --cached --quiet; then
+            echo "Appcast already up to date."
+          else
+            git commit -m "chore(release): update appcast for $VERSION"
+            git push origin HEAD:main
+          fi
+
+      - name: Update Homebrew tap
+        run: |
+          set -euo pipefail
+          TAP_DIR="$RUNNER_TEMP/homebrew-tap"
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/qiyuey/homebrew-tap.git" "$TAP_DIR"
+          SHA256="$(shasum -a 256 "$DMG" | awk '{print $1}')"
+          .agents/skills/lid-release/scripts/render-homebrew-cask.sh \
+            --version "$VERSION" \
+            --sha256 "$SHA256" \
+            --output "$TAP_DIR/Casks/lid.rb"
+
+          cd "$TAP_DIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/lid.rb
+          if git diff --cached --quiet; then
+            echo "Homebrew cask already up to date."
+          else
+            git commit -m "cask(lid): update to $VERSION"
+            git push
+          fi

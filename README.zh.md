@@ -17,6 +17,21 @@ Lid 是一个为 AI agent 时代打造的轻量 macOS 菜单栏应用。
 
 从 [GitHub Releases](https://github.com/qiyuey/lid/releases) 下载最新的 macOS 签名版本。
 
+### Homebrew
+
+```bash
+brew tap qiyuey/tap
+brew install --cask lid
+```
+
+之后更新：
+
+```bash
+brew upgrade --cask lid
+```
+
+### 手动下载
+
 Lid 需要 macOS 26 或更高版本。下载后，把 `Lid.app` 移到 `/Applications`，然后从菜单栏打开。
 
 如果 macOS 提示应用已损坏或无法打开，安装后在终端清除隔离属性：
