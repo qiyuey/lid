@@ -23,6 +23,9 @@ struct MenuContent: View {
         .buttonStyle(.glass)
         .frame(width: LiquidGlassMetrics.menuWidth)
         .fixedSize(horizontal: false, vertical: true)
+        .onAppear {
+            state.menuDidAppear()
+        }
     }
 }
 
@@ -68,7 +71,7 @@ private struct PrimaryToggleRow: View {
             ))
             .menuSwitchStyle()
             .disabled(!state.usingHelper || state.isChanging)
-            .help(state.usingHelper ? text.primaryToggleLabel : text.installHelperRequiredMessage)
+            .help(state.usingHelper ? text.primaryToggleLabel : state.helperUnavailableText)
         }
     }
 }
@@ -221,29 +224,7 @@ private struct AppSection: View {
                 .menuSwitchStyle()
             }
 
-            LiquidGlassRow(title: text.helperTitle) {
-                if state.helperInstalled {
-                    Button(text.remove, role: .destructive) {
-                        state.uninstallHelper()
-                    }
-                    .help(text.removeHelperTitle)
-                } else {
-                    Button(state.helperNeedsApproval ? text.open : text.install) {
-                        state.installHelper()
-                    }
-                    .buttonStyle(.glassProminent)
-                    .help(state.helperNeedsApproval ? text.onboardingOpenLoginItems : text.onboardingInstallHelper)
-                }
-            }
-
-            if state.helperNeedsApproval {
-                LiquidGlassRow(title: text.pendingHelperTitle) {
-                    Button(text.remove, role: .destructive) {
-                        state.uninstallHelper()
-                    }
-                    .help(text.removeHelperTitle)
-                }
-            }
+            HelperRow()
 
             LiquidGlassRow(title: text.checkAutomaticallyTitle) {
                 Toggle(text.checkAutomaticallyTitle, isOn: $updater.automaticallyChecksForUpdates)
@@ -256,6 +237,59 @@ private struct AppSection: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+private struct HelperRow: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        let text = state.text
+        LiquidGlassRow(title: text.helperTitle, trailingWidth: nil) {
+            HStack(spacing: 8) {
+                primaryAction
+                if showsRemoveAction {
+                    removeButton
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var primaryAction: some View {
+        let text = state.text
+        if state.usingHelper {
+            removeButton
+        } else if state.helperNeedsApproval {
+            Button(text.open) {
+                state.openLoginItems()
+            }
+            .buttonStyle(.glassProminent)
+            .help(text.onboardingOpenLoginItems)
+        } else if state.helperInstalled {
+            Button(text.repair) {
+                state.installHelper()
+            }
+            .buttonStyle(.glassProminent)
+            .help(text.reinstallHelper)
+        } else {
+            Button(text.install) {
+                state.installHelper()
+            }
+            .buttonStyle(.glassProminent)
+            .help(text.onboardingInstallHelper)
+        }
+    }
+
+    private var removeButton: some View {
+        Button(state.text.remove, role: .destructive) {
+            state.uninstallHelper()
+        }
+        .help(state.text.removeHelperTitle)
+    }
+
+    private var showsRemoveAction: Bool {
+        !state.usingHelper && (state.helperInstalled || state.helperNeedsApproval)
     }
 }
 

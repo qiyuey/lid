@@ -58,11 +58,24 @@ final class AppState: ObservableObject {
         AppStrings(language: languagePreference.effectiveLanguage)
     }
 
+    var helperUnavailableText: String {
+        if helperNeedsApproval {
+            return text.approveHelperThenTry
+        }
+        if helperInstalled {
+            return text.helperNoResponse
+        }
+        return text.installHelperRequiredMessage
+    }
+
     private var alerts: AlertPresenter {
         AlertPresenter(text: text)
     }
 
     private var helperStatusTimer: Timer?
+    private var helperApprovalPollTimer: Timer?
+    private var helperApprovalPollDeadline: Date?
+    private var helperRecheckInProgress = false
     private var heartbeatTimer: Timer?
     private var lastRequestedHelperWatchdogEnabled: Bool?
     private var automaticHelperRepairGate = AutomaticHelperRepairGate(
@@ -72,6 +85,10 @@ final class AppState: ObservableObject {
 
     private enum Timing {
         static let automaticHelperRepairCooldown: TimeInterval = 60
+        static let helperReadinessAttempts = 2
+        static let helperReadinessRetryDelay: TimeInterval = 1
+        static let helperApprovalPollInterval: TimeInterval = 1
+        static let helperApprovalPollDuration: TimeInterval = 20
     }
 
     private var didBecomeActiveObserver: NSObjectProtocol?
@@ -85,9 +102,10 @@ final class AppState: ObservableObject {
         configureAutoOff()
         launchAtLogin = loginItem.isEnabled
         refreshHelperStatus()
-        refreshHelperRegistrationIfNeeded()
         helperLifecycle.captureUsableBaseline()
         refreshState()
+        refreshHelperUsability(repairIfUnavailable: true, refreshStateWhenUsable: true)
+        refreshHelperRegistrationIfNeeded()
         refreshBattery()
         battery.start { [weak self] info in
             Task { @MainActor in
@@ -104,7 +122,7 @@ final class AppState: ObservableObject {
         didBecomeActiveObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.recheckHelper() }
+            Task { @MainActor in self?.recheckHelper(startApprovalPolling: true) }
         }
         localeObserver = NotificationCenter.default.addObserver(
             forName: NSLocale.currentLocaleDidChangeNotification, object: nil, queue: .main
@@ -132,6 +150,7 @@ final class AppState: ObservableObject {
     deinit {
         MainActor.assumeIsolated {
             helperStatusTimer?.invalidate()
+            helperApprovalPollTimer?.invalidate()
             heartbeatTimer?.invalidate()
             if let didBecomeActiveObserver {
                 NotificationCenter.default.removeObserver(didBecomeActiveObserver)
@@ -227,11 +246,42 @@ final class AppState: ObservableObject {
     /// Re-read helper status; if it just became usable (the user approved it while
     /// the app was running), pick up its keep-awake state without interrupting the
     /// current flow.
-    func recheckHelper() {
-        let becameUsable = helperLifecycle.recheckBecameUsable()
-        syncHelperStatus()
-        guard becameUsable else { return }
-        refreshState()
+    func recheckHelper(startApprovalPolling: Bool = false) {
+        guard !helperRecheckInProgress else {
+            if startApprovalPolling, helperNeedsApproval {
+                startHelperApprovalPolling()
+            }
+            return
+        }
+        helperRecheckInProgress = true
+        helperLifecycle.recheckBecameUsable { [weak self] becameUsable in
+            guard let self else { return }
+            self.helperRecheckInProgress = false
+            self.syncHelperStatus()
+            if self.usingHelper {
+                self.stopHelperApprovalPolling()
+                if becameUsable {
+                    self.ensureHelperWatchdogEnabled(force: true)
+                }
+                self.refreshState()
+            } else {
+                self.refreshState()
+                if self.helperNeedsApproval {
+                    self.lastError = self.text.approveHelperPrompt
+                    if startApprovalPolling {
+                        self.startHelperApprovalPolling()
+                    }
+                    return
+                }
+                self.stopHelperApprovalPolling()
+                if self.helperInstalled, !self.helperNeedsApproval {
+                    self.lastError = self.text.helperNoResponse
+                    self.repairHelperAutomatically { [weak self] in
+                        self?.refreshHelperUsability(refreshStateWhenUsable: true)
+                    }
+                }
+            }
+        }
     }
 
     func installHelper() {
@@ -243,23 +293,35 @@ final class AppState: ObservableObject {
             openLoginItems()
             return
         }
-        do {
-            let becameUsable = try helperLifecycle.register()
+        if helperLifecycle.installed {
+            if helperLifecycle.usingHelper {
+                lastError = nil
+            } else {
+                lastError = text.helperNoResponse
+                repairHelper()
+            }
+            return
+        }
+        helperLifecycle.register { [weak self] becameUsable, errorMessage in
+            guard let self else { return }
             syncHelperStatus()
             if helperLifecycle.needsApproval {
                 lastError = text.approveHelperPrompt
                 helper.openLoginItemsSettings()
-            } else {
-                lastError = nil
-                ensureHelperWatchdogEnabled(force: true)
-                // Rare: registered and immediately usable (already approved). Treat
-                // it as the same enable transition the approval path would hit.
-                if becameUsable {
-                    refreshState()
-                }
+                startHelperApprovalPolling()
+                return
             }
-        } catch {
-            lastError = error.localizedDescription
+            if let errorMessage {
+                lastError = errorMessage
+                return
+            }
+            lastError = nil
+            ensureHelperWatchdogEnabled(force: true)
+            // Rare: registered and immediately usable (already approved). Treat
+            // it as the same enable transition the approval path would hit.
+            if becameUsable {
+                refreshState()
+            }
         }
     }
 
@@ -270,6 +332,7 @@ final class AppState: ObservableObject {
         lastError = text.approveHelperPrompt
         helper.openLoginItemsSettings()
         refreshHelperStatus()
+        startHelperApprovalPolling()
     }
 
     func uninstallHelper() {
@@ -325,17 +388,20 @@ final class AppState: ObservableObject {
     // MARK: State
 
     func refreshState() {
-        if helperInstalled {
+        if usingHelper {
             helper.getStateResult { [weak self] value, err in
                 guard let self else { return }
                 if let err {
                     self.lastError = err
                     self.logger.error("Refresh state failed through helper: \(err, privacy: .public)")
+                    self.helperLifecycle.markUnusable()
+                    self.syncHelperStatus()
                     self.repairHelperAutomatically { [weak self] in
-                        self?.refreshState()
+                        self?.refreshHelperUsability(refreshStateWhenUsable: true)
                     }
                     return
                 }
+                self.clearHelperAvailabilityMessage()
                 self.applyObservedEnabledState(value)
                 if value {
                     self.ensureHelperWatchdogEnabled()
@@ -344,8 +410,10 @@ final class AppState: ObservableObject {
         } else {
             let actual = emergencyRestorer.isSleepDisabled()
             applyObservedEnabledState(actual)
-            if actual {
-                lastError = helperNeedsApproval ? text.approveHelperThenTry : text.installHelperRequiredMessage
+            if helperNeedsApproval {
+                lastError = text.approveHelperPrompt
+            } else if actual {
+                lastError = helperUnavailableText
             }
         }
     }
@@ -375,7 +443,7 @@ final class AppState: ObservableObject {
             }
         }
         let resultMessage = note
-        if helperInstalled {
+        if usingHelper {
             let requestID = beginStateChange()
             helper.setKeepAwake(target) { [weak self] ok, err in
                 guard let self, self.isCurrentStateChange(requestID) else { return }
@@ -393,6 +461,8 @@ final class AppState: ObservableObject {
                     // surface it instead of letting the toggle silently no-op.
                     let message = err ?? self.text.helperNoResponse
                     self.lastError = message
+                    self.helperLifecycle.markUnusable()
+                    self.syncHelperStatus()
                     if userInitiated {
                         self.alerts.presentHelperFailure(message: message) { [weak self] in
                             self?.repairHelper()
@@ -412,7 +482,7 @@ final class AppState: ObservableObject {
                 return
             }
 
-            let message = helperNeedsApproval ? text.approveHelperThenTry : text.installHelperRequiredMessage
+            let message = helperUnavailableText
             lastError = message
             if userInitiated {
                 alerts.presentToggleFailure(target: target, message: message)
@@ -447,7 +517,7 @@ final class AppState: ObservableObject {
     }
 
     private func continueAwakeAfterQuit() {
-        guard helperInstalled else {
+        guard usingHelper else {
             NSApp.terminate(nil)
             return
         }
@@ -474,16 +544,17 @@ final class AppState: ObservableObject {
         helperLifecycle.repair { [weak self] errorMessage in
             guard let self else { return }
             self.syncHelperStatus()
-            if let errorMessage {
-                self.logger.error("Helper repair failed: \(errorMessage, privacy: .public)")
-                self.lastError = errorMessage
-                completion?()
-            } else if self.helperLifecycle.needsApproval {
+            if self.helperLifecycle.needsApproval {
                 self.logger.info("Helper repair completed but approval is required")
                 self.lastError = self.text.approveHelperThenTry
                 if showSuccessMessage {
                     self.helper.openLoginItemsSettings()
                 }
+                self.startHelperApprovalPolling()
+                completion?()
+            } else if let errorMessage {
+                self.logger.error("Helper repair failed: \(errorMessage, privacy: .public)")
+                self.lastError = errorMessage
                 completion?()
             } else {
                 self.logger.info("Helper repair completed")
@@ -524,14 +595,93 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func refreshHelperUsability(repairIfUnavailable: Bool = false,
+                                        refreshStateWhenUsable: Bool = false) {
+        let maxAttempts = repairIfUnavailable ? Timing.helperReadinessAttempts : 1
+        helperLifecycle.refreshUsability(
+            maxAttempts: maxAttempts,
+            retryDelay: Timing.helperReadinessRetryDelay
+        ) { [weak self] usable in
+            guard let self else { return }
+            self.syncHelperStatus()
+            if usable {
+                self.ensureHelperWatchdogEnabled()
+                if refreshStateWhenUsable {
+                    self.refreshState()
+                }
+                return
+            }
+
+            self.refreshState()
+            if self.helperNeedsApproval {
+                self.lastError = self.text.approveHelperPrompt
+                self.startHelperApprovalPolling()
+                return
+            }
+            self.stopHelperApprovalPolling()
+            guard repairIfUnavailable, self.helperInstalled, !self.helperNeedsApproval else {
+                return
+            }
+
+            self.lastError = self.text.helperNoResponse
+            self.repairHelperAutomatically { [weak self] in
+                self?.refreshHelperUsability(refreshStateWhenUsable: true)
+            }
+        }
+    }
+
     private func syncHelperStatus() {
         helperInstalled = helperLifecycle.installed
         helperNeedsApproval = helperLifecycle.needsApproval
         usingHelper = helperLifecycle.usingHelper
     }
 
+    private func clearHelperAvailabilityMessage() {
+        guard let lastError else { return }
+        let helperAvailabilityMessages = [
+            text.approveHelperPrompt,
+            text.approveHelperThenTry,
+            text.helperNoResponse,
+            text.installHelperRequiredMessage
+        ]
+        if helperAvailabilityMessages.contains(lastError) {
+            self.lastError = nil
+        }
+    }
+
+    private func startHelperApprovalPolling() {
+        helperApprovalPollDeadline = Date().addingTimeInterval(Timing.helperApprovalPollDuration)
+        guard helperApprovalPollTimer == nil else { return }
+        helperApprovalPollTimer = Timer.scheduledTimer(
+            withTimeInterval: Timing.helperApprovalPollInterval,
+            repeats: true
+        ) { [weak self] _ in
+            Task { @MainActor in self?.pollHelperApproval() }
+        }
+    }
+
+    private func pollHelperApproval() {
+        if usingHelper || !helperNeedsApproval {
+            stopHelperApprovalPolling()
+            return
+        }
+
+        guard let deadline = helperApprovalPollDeadline, Date() <= deadline else {
+            stopHelperApprovalPolling()
+            return
+        }
+
+        recheckHelper()
+    }
+
+    private func stopHelperApprovalPolling() {
+        helperApprovalPollTimer?.invalidate()
+        helperApprovalPollTimer = nil
+        helperApprovalPollDeadline = nil
+    }
+
     private func ensureHelperWatchdogEnabled(force: Bool = false) {
-        guard helperInstalled else {
+        guard usingHelper else {
             lastRequestedHelperWatchdogEnabled = nil
             return
         }
@@ -555,7 +705,7 @@ final class AppState: ObservableObject {
     private func manageHeartbeat() {
         heartbeatTimer?.invalidate()
         heartbeatTimer = nil
-        guard isEnabled, helperInstalled else { return }
+        guard isEnabled, usingHelper else { return }
         helper.heartbeat()
         heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.helper.heartbeat() }
@@ -585,10 +735,10 @@ final class AppState: ObservableObject {
         // Backstop for the didBecomeActive observer: catch a helper approval even
         // if the app never lost/regained active state.
         recheckHelper()
-        // Keep the UI tied to the actual power-management flag. `refreshState`
-        // uses `applyObservedEnabledState`, so this does not re-arm auto-off when
-        // the state is unchanged.
-        refreshState()
+    }
+
+    func menuDidAppear() {
+        recheckHelper(startApprovalPolling: true)
     }
 
     func refreshBattery() {
@@ -611,6 +761,8 @@ final class AppState: ObservableObject {
             if let err {
                 self.lastError = err
                 self.logger.error("Confirm helper state failed: \(err, privacy: .public)")
+                self.helperLifecycle.markUnusable()
+                self.syncHelperStatus()
                 if userInitiated {
                     self.alerts.presentHelperFailure(message: err) { [weak self] in
                         self?.repairHelper()
@@ -671,7 +823,7 @@ final class AppState: ObservableObject {
         if changed {
             manageHeartbeat()
             updateAutoOff(for: value)
-        } else if value, helperInstalled, heartbeatTimer == nil {
+        } else if value, usingHelper, heartbeatTimer == nil {
             manageHeartbeat()
         }
     }

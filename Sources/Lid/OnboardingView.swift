@@ -216,7 +216,7 @@ struct OnboardingView: View {
                 ),
                 disabled: !state.usingHelper || state.isChanging
             )
-            .help(state.usingHelper ? text.primaryToggleLabel : text.installHelperRequiredMessage)
+            .help(state.usingHelper ? text.primaryToggleLabel : state.helperUnavailableText)
 
             onboardingToggleRow(
                 title: text.continueAfterQuitTitle,

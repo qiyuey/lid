@@ -49,19 +49,19 @@ xcodebuild build \
 ```
 
 Builds the debug app without requiring signing. Use `./scripts/release.sh` only
-on a Mac configured for Developer ID signing, notarization, and Sparkle signing.
+as the compatibility entrypoint for the tag-driven self-signed release workflow.
+Published artifacts must stay on the self-signed path.
 
 ```bash
-xcodebuild build \
-  -scheme Lid \
-  -destination 'generic/platform=macOS' \
-  -configuration Release \
-  -derivedDataPath build/LocalReleaseInstallDerivedData
+./scripts/install-self-signed-release.sh
 ```
 
-Builds a locally signed Release app for same-machine testing or manual
-installation. This does not notarize, staple, create a DMG, update Sparkle
-appcasts, or publish GitHub releases.
+Builds the self-signed Release DMG and installs that app into `/Applications`
+for same-machine testing. Do not install the raw `xcodebuild -configuration
+Release` product directly: Xcode automatic signing may produce an Apple
+Development-signed app, while local installs and published Homebrew/GitHub
+artifacts must stay on the self-signed path. This does not notarize, staple,
+update Sparkle appcasts, or publish GitHub releases.
 
 ## Coding Style & Naming Conventions
 

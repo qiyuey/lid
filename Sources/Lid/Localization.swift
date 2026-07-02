@@ -52,6 +52,7 @@ struct AppStrings: Sendable {
     var open: String { pick("Open", "打开") }
     var install: String { pick("Install", "安装") }
     var remove: String { pick("Remove", "移除") }
+    var repair: String { pick("Repair", "修复") }
     var check: String { pick("Check", "检查") }
     var done: String { pick("Done", "完成") }
     var `continue`: String { pick("Continue", "继续") }

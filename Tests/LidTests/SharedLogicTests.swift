@@ -179,36 +179,37 @@ final class SharedLogicTests: XCTestCase {
         XCTAssertEqual(LidHelperIdentity.appBundleID(helperLabel: "invalid"), "top.qiyuey.lid")
     }
 
-    func testHelperClientCodeSigningRequirementIncludesBundleAndTeam() {
-        let requirement = LidHelperIdentity.clientCodeSigningRequirement(appBundleID: "com.example.App",
-                                                                     teamID: "TEAM123456")
+    func testHelperClientCodeSigningRequirementUsesDefaultSelfSignedCertificate() {
+        let requirement = LidHelperIdentity.clientCodeSigningRequirement(appBundleID: "com.example.App")
+
         XCTAssertTrue(requirement.contains(#"identifier "com.example.App""#))
-        XCTAssertTrue(requirement.contains(#"certificate leaf[subject.OU] = "TEAM123456""#))
+        XCTAssertTrue(requirement.contains(#"certificate leaf[subject.CN] = "Lid Local Self-Signed Code Signing""#))
+        XCTAssertFalse(requirement.contains("subject.OU"))
+        XCTAssertFalse(requirement.contains("anchor apple generic"))
     }
 
-    func testHelperClientCodeSigningRequirementCanAllowSelfSignedCertificate() {
+    func testHelperClientCodeSigningRequirementCanUseSelfSignedCertificateName() {
         let requirement = LidHelperIdentity.clientCodeSigningRequirement(
             appBundleID: "com.example.App",
-            teamID: "TEAM123456",
             certificateCommonName: #"Lid "Local" Self-Signed"#
         )
 
-        XCTAssertTrue(requirement.contains(#"certificate leaf[subject.OU] = "TEAM123456""#))
         XCTAssertTrue(requirement.contains(#"certificate leaf[subject.CN] = "Lid \"Local\" Self-Signed""#))
-        XCTAssertTrue(requirement.contains(" or "))
+        XCTAssertFalse(requirement.contains("subject.OU"))
+        XCTAssertFalse(requirement.contains(" or "))
     }
 
     func testHelperClientCodeSigningRequirementPrefersSelfSignedCertificateHash() {
         let requirement = LidHelperIdentity.clientCodeSigningRequirement(
             appBundleID: "com.example.App",
-            teamID: "TEAM123456",
             certificateCommonName: "Lid Local Self-Signed",
             certificateSHA1: "c0538f1e:36192006:9cd31f92:2a1a69ee:36f36c90"
         )
 
         XCTAssertTrue(requirement.contains(#"certificate leaf = H"C0538F1E361920069CD31F922A1A69EE36F36C90""#))
         XCTAssertFalse(requirement.contains("certificate leaf[subject.CN]"))
-        XCTAssertTrue(requirement.contains(" or "))
+        XCTAssertFalse(requirement.contains("subject.OU"))
+        XCTAssertFalse(requirement.contains(" or "))
     }
 
     func testHelperVersionStringContainsHelperVersion() {

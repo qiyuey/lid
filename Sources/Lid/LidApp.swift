@@ -1,4 +1,5 @@
 import Darwin
+import Foundation
 import SwiftUI
 
 @main
@@ -31,8 +32,14 @@ private enum MaintenanceCommand {
     static func runIfRequested() {
         if CommandLine.arguments.contains("--register-helper") {
             do {
-                try HelperManager().register()
-                print("Background helper registration requested.")
+                let helper = HelperManager()
+                try helper.register()
+                if waitForHelper(helper) {
+                    print("Background helper registered and reachable.")
+                } else {
+                    fputs("Failed to reach background helper after registration.\n", stderr)
+                    exit(EXIT_FAILURE)
+                }
                 exit(EXIT_SUCCESS)
             } catch {
                 fputs("Failed to register background helper: \(error.localizedDescription)\n", stderr)
@@ -49,6 +56,41 @@ private enum MaintenanceCommand {
                 fputs("Failed to unregister background helper: \(error.localizedDescription)\n", stderr)
                 exit(EXIT_FAILURE)
             }
+        }
+    }
+
+    @MainActor
+    private static func waitForHelper(_ helper: HelperManager,
+                                      maxAttempts: Int = 8,
+                                      retryDelay: TimeInterval = 2) -> Bool {
+        for attempt in 1...maxAttempts {
+            if checkReachable(helper) {
+                return true
+            }
+            if attempt < maxAttempts {
+                pumpRunLoop(until: Date().addingTimeInterval(retryDelay))
+            }
+        }
+        return false
+    }
+
+    @MainActor
+    private static func checkReachable(_ helper: HelperManager) -> Bool {
+        var reachable: Bool?
+        helper.checkReachable { value in
+            reachable = value
+        }
+        pumpRunLoop(until: Date().addingTimeInterval(6)) {
+            reachable == nil
+        }
+        return reachable == true
+    }
+
+    @MainActor
+    private static func pumpRunLoop(until deadline: Date,
+                                    while shouldContinue: () -> Bool = { true }) {
+        while shouldContinue(), Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
         }
     }
 }

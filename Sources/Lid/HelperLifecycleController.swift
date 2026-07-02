@@ -18,6 +18,13 @@ final class HelperLifecycleController {
     private let registrationFingerprint: @MainActor () -> String
     private var usableBaseline = false
 
+    private enum Timing {
+        static let registrationReachabilityAttempts = 8
+        static let registrationReachabilityRetryDelay: TimeInterval = 2
+        static let statusReachabilityAttempts = 2
+        static let statusReachabilityRetryDelay: TimeInterval = 1
+    }
+
     private(set) var installed = false
     private(set) var needsApproval = false
     private(set) var usingHelper = false
@@ -33,46 +40,140 @@ final class HelperLifecycleController {
     func refreshStatus() {
         installed = helper.isEnabled
         needsApproval = helper.requiresApproval
-        usingHelper = installed
+        if !installed || needsApproval {
+            usingHelper = false
+        }
     }
 
     func captureUsableBaseline() {
         usableBaseline = usingHelper
     }
 
-    func refreshRegistrationIfNeeded(onRepairNeeded: @escaping @MainActor @Sendable () -> Void) {
+    func markUnusable() {
+        usingHelper = false
+        usableBaseline = false
+    }
+
+    func refreshUsability(maxAttempts: Int = 1,
+                          retryDelay: TimeInterval = 1,
+                          completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        refreshUsabilityAttempt(
+            attemptsRemaining: max(1, maxAttempts),
+            retryDelay: retryDelay,
+            completion: completion
+        )
+    }
+
+    private func refreshUsabilityAttempt(attemptsRemaining: Int,
+                                         retryDelay: TimeInterval,
+                                         completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        refreshStatus()
+        guard installed, !needsApproval else {
+            completion(false)
+            return
+        }
+
+        helper.checkReachable { [weak self] reachable in
+            guard let self else {
+                completion(false)
+                return
+            }
+
+            self.refreshStatus()
+            self.usingHelper = self.installed && !self.needsApproval && reachable
+            if self.usingHelper {
+                self.storeCurrentHelperVersion()
+                completion(true)
+            } else if attemptsRemaining > 1, self.installed, !self.needsApproval {
+                self.retryRefreshUsability(
+                    attemptsRemaining: attemptsRemaining - 1,
+                    retryDelay: retryDelay,
+                    completion: completion
+                )
+            } else {
+                self.clearStoredHelperVersion()
+                completion(false)
+            }
+        }
+    }
+
+    private func retryRefreshUsability(attemptsRemaining: Int,
+                                       retryDelay: TimeInterval,
+                                       completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        guard retryDelay > 0 else {
+            refreshUsabilityAttempt(
+                attemptsRemaining: attemptsRemaining,
+                retryDelay: retryDelay,
+                completion: completion
+            )
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) { [weak self] in
+            Task { @MainActor in
+                self?.refreshUsabilityAttempt(
+                    attemptsRemaining: attemptsRemaining,
+                    retryDelay: retryDelay,
+                    completion: completion
+                )
+            }
+        }
+    }
+
+    func refreshRegistrationIfNeeded(
+        maxAttempts: Int = Timing.statusReachabilityAttempts,
+        retryDelay: TimeInterval = Timing.statusReachabilityRetryDelay,
+        onRepairNeeded: @escaping @MainActor @Sendable () -> Void
+    ) {
         let fingerprint = helperRegistrationFingerprint()
         guard store.loadLastHelperVersion() != fingerprint else { return }
         guard helper.isEnabled else { return }
-        helper.checkReachable { [weak self] reachable in
-            guard let self else { return }
-            if reachable {
-                self.storeCurrentHelperVersion()
-                return
-            }
+        refreshUsability(
+            maxAttempts: maxAttempts,
+            retryDelay: retryDelay
+        ) { usable in
+            guard !usable else { return }
             onRepairNeeded()
         }
     }
 
-    func recheckBecameUsable() -> Bool {
+    func recheckBecameUsable(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         let wasUsable = usableBaseline
-        refreshStatus()
-        if usingHelper {
-            storeCurrentHelperVersionIfReachable()
+        refreshUsability { [weak self] usable in
+            guard let self else {
+                completion(false)
+                return
+            }
+            self.usableBaseline = usable
+            completion(!wasUsable && usable)
         }
-        usableBaseline = usingHelper
-        return !wasUsable && usingHelper
     }
 
-    func register() throws -> Bool {
+    func register(maxAttempts: Int = Timing.registrationReachabilityAttempts,
+                  retryDelay: TimeInterval = Timing.registrationReachabilityRetryDelay,
+                  completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
         let wasUsable = usableBaseline
-        try helper.register()
-        refreshStatus()
-        if usingHelper {
-            storeCurrentHelperVersionIfReachable()
+        do {
+            try helper.register()
+        } catch {
+            refreshStatus()
+            if needsApproval {
+                usableBaseline = false
+                completion(false, nil)
+            } else {
+                completion(false, error.localizedDescription)
+            }
+            return
         }
-        usableBaseline = usingHelper
-        return !wasUsable && usingHelper
+
+        refreshUsability(maxAttempts: maxAttempts, retryDelay: retryDelay) { [weak self] usable in
+            guard let self else {
+                completion(false, nil)
+                return
+            }
+            self.usableBaseline = usable
+            completion(!wasUsable && usable, nil)
+        }
     }
 
     func unregister(completion: @escaping @MainActor @Sendable (String?) -> Void) {
@@ -90,34 +191,40 @@ final class HelperLifecycleController {
         }
     }
 
-    func repair(completion: @escaping @MainActor @Sendable (String?) -> Void) {
+    func repair(maxAttempts: Int = Timing.registrationReachabilityAttempts,
+                retryDelay: TimeInterval = Timing.registrationReachabilityRetryDelay,
+                completion: @escaping @MainActor @Sendable (String?) -> Void) {
         helper.reregister { [weak self] errorMessage in
             guard let self else {
                 completion(errorMessage)
                 return
             }
             self.refreshStatus()
-            self.usableBaseline = self.usingHelper
             guard errorMessage == nil else {
-                completion(errorMessage)
+                if self.needsApproval {
+                    self.usableBaseline = false
+                    completion(nil)
+                } else {
+                    completion(errorMessage)
+                }
                 return
             }
 
-            guard self.usingHelper else {
+            guard self.installed, !self.needsApproval else {
+                self.usableBaseline = false
                 completion(nil)
                 return
             }
 
-            self.helper.checkReachable { [weak self] reachable in
+            self.refreshUsability(maxAttempts: maxAttempts, retryDelay: retryDelay) { [weak self] usable in
                 guard let self else {
                     completion(nil)
                     return
                 }
-                if reachable {
-                    self.storeCurrentHelperVersion()
+                self.usableBaseline = usable
+                if usable {
                     completion(nil)
                 } else {
-                    self.clearStoredHelperVersion()
                     completion("The background helper isn’t responding.")
                 }
             }
@@ -130,17 +237,6 @@ final class HelperLifecycleController {
 
     private func clearStoredHelperVersion() {
         store.clearLastHelperVersion()
-    }
-
-    private func storeCurrentHelperVersionIfReachable() {
-        helper.checkReachable { [weak self] reachable in
-            guard let self else { return }
-            if reachable {
-                self.storeCurrentHelperVersion()
-            } else {
-                self.clearStoredHelperVersion()
-            }
-        }
     }
 
     private func helperRegistrationFingerprint() -> String {

@@ -18,35 +18,32 @@ public enum LidHelperIdentity {
     public static let fallbackLabel = "top.qiyuey.lid.helper"
 
     public static let allowedClientBundleIDEnvKey = "LID_ALLOWED_CLIENT_BUNDLE_ID"
-    public static let allowedTeamIDEnvKey = "LID_ALLOWED_TEAM_ID"
     public static let allowedClientCertificateCommonNameEnvKey = "LID_ALLOWED_CLIENT_CERTIFICATE_CN"
     public static let allowedClientCertificateSHA1EnvKey = "LID_ALLOWED_CLIENT_CERTIFICATE_SHA1"
     public static let appVersionEnvKey = "LID_APP_VERSION"
     public static let appBuildEnvKey = "LID_APP_BUILD"
-    public static let defaultTeamIdentifier = "7T4ZKYBB6Z"
+    public static let defaultSelfSignedCertificateCommonName = "Lid Local Self-Signed Code Signing"
     public static let helperVersion = 1
 
     public static func appBundleID(helperLabel: String) -> String {
         helperLabel.hasSuffix(".helper") ? String(helperLabel.dropLast(".helper".count)) : "top.qiyuey.lid"
     }
 
-    public static func clientCodeSigningRequirement(appBundleID: String,
-                                                    teamID: String,
-                                                    certificateCommonName: String? = nil,
-                                                    certificateSHA1: String? = nil) -> String {
+    public static func clientCodeSigningRequirement(
+        appBundleID: String,
+        certificateCommonName: String? = defaultSelfSignedCertificateCommonName,
+        certificateSHA1: String? = nil
+    ) -> String {
         let identifier = "identifier \"\(requirementLiteral(appBundleID))\""
-        let appleSigned = "\(identifier) and anchor apple generic and certificate leaf[subject.OU] = \"\(requirementLiteral(teamID))\""
-        var allowedRequirements = [appleSigned]
 
         if let certificateSHA1, !certificateSHA1.isEmpty {
-            allowedRequirements.append("\(identifier) and certificate leaf = H\"\(certificateHashLiteral(certificateSHA1))\"")
-        } else if let certificateCommonName, !certificateCommonName.isEmpty {
-            allowedRequirements.append("\(identifier) and certificate leaf[subject.CN] = \"\(requirementLiteral(certificateCommonName))\"")
+            return "\(identifier) and certificate leaf = H\"\(certificateHashLiteral(certificateSHA1))\""
         }
 
-        return allowedRequirements.count == 1
-            ? appleSigned
-            : allowedRequirements.map { "(\($0))" }.joined(separator: " or ")
+        let commonName = (certificateCommonName?.isEmpty == false)
+            ? certificateCommonName!
+            : defaultSelfSignedCertificateCommonName
+        return "\(identifier) and certificate leaf[subject.CN] = \"\(requirementLiteral(commonName))\""
     }
 
     public static func versionString(bundle: Bundle,

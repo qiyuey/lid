@@ -8,8 +8,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    DEVELOPMENT_TEAM: 7T4ZKYBB6Z
-    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_STYLE: Manual
 
 packages:
   Sparkle:
@@ -69,7 +68,6 @@ targets:
           set -euo pipefail
           APP_ID="${PRODUCT_BUNDLE_IDENTIFIER}"
           HELPER_ID="${APP_ID}.helper"
-          TEAM_ID="${DEVELOPMENT_TEAM:-7T4ZKYBB6Z}"
           CERT_CN="${LID_SELF_SIGNED_CERT_CN:-}"
           CERT_SHA1="${LID_SELF_SIGNED_CERT_SHA1:-}"
           APP_VERSION="${MARKETING_VERSION:-0}"
@@ -93,11 +91,9 @@ targets:
               <key>Label</key><string>${HELPER_ID}</string>
               <key>BundleProgram</key><string>Contents/MacOS/LidHelper</string>
               <key>MachServices</key><dict><key>${HELPER_ID}</key><true/></dict>
-              <key>AssociatedBundleIdentifiers</key><array><string>${APP_ID}</string></array>
               <key>EnvironmentVariables</key><dict>
                   <key>LID_MACH_LABEL</key><string>${HELPER_ID}</string>
                   <key>LID_ALLOWED_CLIENT_BUNDLE_ID</key><string>${APP_ID}</string>
-                  <key>LID_ALLOWED_TEAM_ID</key><string>${TEAM_ID}</string>
           ${CERT_CN_ENTRY}
           ${CERT_SHA1_ENTRY}
                   <key>LID_APP_VERSION</key><string>${APP_VERSION}</string>

@@ -1,8 +1,8 @@
 # Vendored Sparkle CLI tools
 
 These are the official Sparkle **2.9.3** command-line binaries, committed so the
-release pipeline (`scripts/release.sh`) is self-contained and deterministic — it
-never has to hunt for the tools in DerivedData or rely on Homebrew.
+self-signed release workflow is self-contained and deterministic. It never has
+to hunt for the tools in DerivedData or rely on Homebrew.
 
 Source: <https://github.com/sparkle-project/Sparkle/releases/tag/2.9.3>
 (`Sparkle-2.9.3.tar.xz` → `bin/`). Keep this version in step with the
@@ -20,7 +20,7 @@ Sparkle SPM package pinned in `project.yml`.
 The EdDSA **private** key lives in the login keychain (created/surfaced by
 `generate_keys`) under the account `qiyuey-lid` and is never committed. The
 matching **public** key is in `project.yml` (`SUPublicEDKey`) and the generated
-`Info.plist`. `scripts/release.sh` uses the same account via `SPARKLE_ACCOUNT`.
+`Info.plist`.
 
 To back up the private key offsite (recommended — it's erased if the keychain is
 lost), run:
