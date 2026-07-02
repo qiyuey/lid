@@ -106,17 +106,17 @@ struct AppStrings: Sendable {
     var onboardingSafetyBullet: String { pick("Auto-pauses if the Mac runs hot or the battery runs low, so it stays safe unattended.", "温度过高或电量过低时自动暂停，降低无人看管时的风险。") }
     var onboardingWatchdogBullet: String { pick("By default, a watchdog restores normal sleep if Lid ever quits or crashes.", "默认情况下，如果 Lid 退出或崩溃，看门狗会恢复正常睡眠。") }
     var onboardingVentilationNote: String { pick("Keep your Mac plugged in and ventilated under heavy use.", "高负载时请接入电源，并保持散热通畅。") }
-    var onboardingHelperTitle: String { pick("Skip the password prompts", "减少密码提示") }
-    var onboardingHelperSubtitle: String { pick("The helper keeps toggling quick and lets the watchdog run.", "Helper 让开关更快，也能运行看门狗。") }
-    var onboardingHelperBody: String { pick("Install a small background helper so turning lid sleep prevention on and off never asks for your admin password, and the safety watchdog can run.", "安装一个小型后台 Helper 后，开关合盖防睡眠不再每次要求管理员密码，安全看门狗也可以运行。") }
-    var onboardingHelperOptional: String { pick("Optional. Lid still works without it; it'll just ask for your password each time you toggle.", "这是可选项。不安装也能使用 Lid，只是每次开关时需要输入密码。") }
+    var onboardingHelperTitle: String { pick("Install the background helper", "安装后台 Helper") }
+    var onboardingHelperSubtitle: String { pick("The helper controls lid sleep prevention and runs the watchdog.", "Helper 用于控制合盖防睡眠并运行看门狗。") }
+    var onboardingHelperBody: String { pick("Install a small background helper before using lid sleep prevention.", "使用合盖防睡眠前，请先安装一个小型后台 Helper。") }
+    var onboardingHelperRequired: String { pick("Required. Lid cannot change lid sleep prevention until the helper is installed and approved.", "必需。安装并批准 Helper 后，Lid 才能更改合盖防睡眠。") }
     var onboardingHelperActive: String { pick("Background helper installed and active.", "后台 Helper 已安装并启用。") }
     var onboardingHelperApproval: String { pick("Approve Lid under System Settings > Login Items, then come back here.", "请在系统设置 > 登录项中批准 Lid，然后回到这里。") }
     var onboardingOpenLoginItems: String { pick("Open Login Items", "打开登录项") }
     var onboardingInstallHelper: String { pick("Install Background Helper", "安装后台 Helper") }
     var onboardingDoneTitle: String { pick("You're all set", "设置完成") }
     var onboardingDoneSubtitle: String { pick("Lid is ready from the menu bar.", "Lid 已可从菜单栏使用。") }
-    var onboardingDoneBody: String { pick("Click the Lid icon and turn **Lid sleep prevention** on whenever you need long-running work to continue with the lid closed.", "需要长时间任务在合盖后继续运行时，点击菜单栏里的 Lid 图标并开启 **合盖防睡眠**。") }
+    var onboardingDoneBody: String { pick("Choose the defaults Lid should apply after setup.", "选择 Lid 在设置完成后应用的默认状态。") }
     var onboardingLaunchAtLogin: String { pick("Launch Lid at login", "登录时启动 Lid") }
 
     func stepLabel(step: Int, total: Int) -> String {
@@ -127,7 +127,7 @@ struct AppStrings: Sendable {
 
     var approveHelperPrompt: String { pick("Approve Lid in System Settings > Login Items.", "请在系统设置 > 登录项中批准 Lid。") }
     var approveHelperThenTry: String { pick("Approve Lid in System Settings > Login Items, then try the switch again.", "请在系统设置 > 登录项中批准 Lid，然后再次尝试开关。") }
-    var helperRemovedMessage: String { pick("Background helper removed. Lid will use the administrator prompt until you install it again.", "后台 Helper 已移除。重新安装前，Lid 会使用管理员密码提示。") }
+    var helperRemovedMessage: String { pick("Background helper removed. Install it again before using lid sleep prevention.", "后台 Helper 已移除。使用合盖防睡眠前，请重新安装 Helper。") }
     var helperNoResponse: String { pick("The background helper didn’t respond.", "后台 Helper 没有响应。") }
     func helperStateMismatch(target: Bool) -> String {
         target
@@ -140,7 +140,7 @@ struct AppStrings: Sendable {
     var quitRestoreFailedText: String { pick("Lid could not restore normal sleep before quitting. Quit anyway and let the background watchdog restore it shortly?", "Lid 退出前无法恢复正常睡眠。仍要退出，并让后台看门狗稍后恢复吗？") }
     var quitAnyway: String { pick("Quit Anyway", "仍然退出") }
     var removeHelperTitle: String { pick("Remove background helper?", "移除后台 Helper？") }
-    var removeHelperText: String { pick("Lid will restore normal sleep first, then remove its privileged helper. Future toggles will use the administrator prompt until you install the helper again.", "Lid 会先恢复正常睡眠，然后移除特权 Helper。重新安装前，之后的开关会使用管理员密码提示。") }
+    var removeHelperText: String { pick("Lid will restore normal sleep first, then remove its privileged helper. You will need to install the helper again before using lid sleep prevention.", "Lid 会先恢复正常睡眠，然后移除特权 Helper。之后如需使用合盖防睡眠，需要重新安装 Helper。") }
     var removeHelperButton: String { pick("Remove Helper", "移除 Helper") }
     var removeHelperFailedTitle: String { pick("Couldn’t remove background helper", "无法移除后台 Helper") }
     func removeHelperFailedText(_ message: String) -> String {

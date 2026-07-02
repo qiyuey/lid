@@ -329,7 +329,11 @@ final class AppState: ObservableObject {
                 }
             }
         } else {
-            applyObservedEnabledState(emergencyRestorer.isSleepDisabled())
+            let actual = emergencyRestorer.isSleepDisabled()
+            applyObservedEnabledState(actual)
+            if actual {
+                lastError = helperNeedsApproval ? text.approveHelperThenTry : text.installHelperRequiredMessage
+            }
         }
     }
 
@@ -356,15 +360,6 @@ final class AppState: ObservableObject {
                 completion?(false)
                 return
             }
-        }
-        if target && !helperInstalled {
-            let message = text.installHelperRequiredMessage
-            lastError = message
-            if userInitiated {
-                alerts.presentToggleFailure(target: target, message: message)
-            }
-            completion?(false)
-            return
         }
         let resultMessage = note
         if helperInstalled {
@@ -396,21 +391,20 @@ final class AppState: ObservableObject {
                 }
             }
         } else {
-            // Enabling without the helper was rejected above; this branch only
-            // restores normal sleep if the flag was left on.
-            do {
-                try emergencyRestorer.restoreNormalSleep()
-                applyObservedEnabledState(target)
+            let actual = emergencyRestorer.isSleepDisabled()
+            applyObservedEnabledState(actual)
+            if !target, !actual {
                 lastError = resultMessage
                 completion?(true)
-            } catch {
-                lastError = error.localizedDescription
-                if userInitiated {
-                    alerts.presentToggleFailure(target: target, message: error.localizedDescription)
-                }
-                applyObservedEnabledState(emergencyRestorer.isSleepDisabled())
-                completion?(false)
+                return
             }
+
+            let message = helperNeedsApproval ? text.approveHelperThenTry : text.installHelperRequiredMessage
+            lastError = message
+            if userInitiated {
+                alerts.presentToggleFailure(target: target, message: message)
+            }
+            completion?(false)
         }
     }
 

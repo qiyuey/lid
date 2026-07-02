@@ -31,8 +31,8 @@ xattr -rd com.apple.quarantine "/Applications/Lid.app"
 
 ## First Run
 
-Lid can ask to install a small privileged helper. Install it if you want Lid to
-toggle lid sleep prevention without repeated administrator prompts.
+Lid requires a small privileged helper before it can change lid sleep
+prevention. Install and approve the helper during setup.
 
 The helper is also used for the watchdog restore behavior: when **Continue
 after quit** is off, the helper restores normal lid-close sleep if Lid exits or

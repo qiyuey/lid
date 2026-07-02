@@ -27,7 +27,7 @@ xattr -rd com.apple.quarantine "/Applications/Lid.app"
 
 ## 首次使用
 
-Lid 可能会提示你安装一个小型特权 Helper。如果你希望开关合盖防睡眠时不反复输入管理员密码，建议安装它。
+使用合盖防睡眠前，Lid 需要安装一个小型特权 Helper。请在设置流程中安装并批准 Helper。
 
 Helper 也负责看门狗恢复：当 **退出后继续生效** 关闭时，如果 Lid 退出或停止发送心跳，Helper 会恢复正常的合盖睡眠。
 

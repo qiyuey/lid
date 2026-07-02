@@ -1,14 +1,16 @@
 import SwiftUI
 
 /// First-run setup walkthrough. Explains what Lid does and walks the user
-/// through the one optional system step — installing the background helper —
+/// through the required system step — installing the background helper —
 /// then hands off to the menu bar. Surfaces existing `AppState` flows only; it
 /// introduces no new permission logic.
 struct OnboardingView: View {
     @EnvironmentObject var state: AppState
     @State private var step = 0
+    @State private var didApplyStep4Defaults = false
 
     private let lastStep = 3
+    private let helperStepIndex = 2
     private let windowCornerRadius: CGFloat = 28
 
     var body: some View {
@@ -140,7 +142,7 @@ struct OnboardingView: View {
 
             helperStatusBox
 
-            Text(text.onboardingHelperOptional)
+            Text(text.onboardingHelperRequired)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -194,13 +196,53 @@ struct OnboardingView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Toggle(text.onboardingLaunchAtLogin, isOn: Binding(
-                get: { state.launchAtLogin },
-                set: { state.setLaunchAtLogin($0) }
-            ))
-            .liquidGlassSwitchStyle()
-            .padding(.top, 8)
+            onboardingOptionsBox
+                .padding(.top, 8)
         }
+        .onAppear {
+            applyStep4DefaultsIfNeeded()
+        }
+    }
+
+    @ViewBuilder
+    private var onboardingOptionsBox: some View {
+        let text = state.text
+        VStack(alignment: .leading, spacing: 4) {
+            onboardingToggleRow(
+                title: text.primaryTitle,
+                isOn: Binding(
+                    get: { state.isEnabled },
+                    set: { state.setEnabled($0, userInitiated: true) }
+                ),
+                disabled: !state.usingHelper || state.isChanging
+            )
+            .help(state.usingHelper ? text.primaryToggleLabel : text.installHelperRequiredMessage)
+
+            onboardingToggleRow(
+                title: text.continueAfterQuitTitle,
+                isOn: Binding(
+                    get: { state.settings.continueAfterQuit },
+                    set: { value in
+                        var settings = state.settings
+                        settings.continueAfterQuit = value
+                        state.updateSettings(settings)
+                    }
+                )
+            )
+            .help(text.continueAfterQuitHelp)
+
+            onboardingToggleRow(
+                title: text.onboardingLaunchAtLogin,
+                isOn: Binding(
+                    get: { state.launchAtLogin },
+                    set: { state.setLaunchAtLogin($0) }
+                )
+            )
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(in: .rect(cornerRadius: 14))
     }
 
     // MARK: Footer
@@ -228,11 +270,7 @@ struct OnboardingView: View {
             .frame(minWidth: 84)
 
             Button(step == lastStep ? text.done : text.continue) {
-                if step == lastStep {
-                    state.completeOnboarding()
-                } else {
-                    withAnimation(.easeInOut(duration: 0.18)) { step += 1 }
-                }
+                advanceOrFinish()
             }
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.glassProminent)
@@ -261,6 +299,51 @@ struct OnboardingView: View {
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+        }
+    }
+
+    private func onboardingToggleRow(title: String,
+                                     isOn: Binding<Bool>,
+                                     disabled: Bool = false) -> some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(.callout)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Toggle(title, isOn: isOn)
+                .liquidGlassSwitchStyle()
+                .disabled(disabled)
+        }
+        .frame(minHeight: 42)
+    }
+
+    private func advanceOrFinish() {
+        if step == lastStep {
+            state.completeOnboarding()
+            return
+        }
+
+        if step == helperStepIndex, !state.usingHelper {
+            state.installHelper()
+            return
+        }
+
+        withAnimation(.easeInOut(duration: 0.18)) { step += 1 }
+    }
+
+    private func applyStep4DefaultsIfNeeded() {
+        guard !didApplyStep4Defaults else { return }
+        didApplyStep4Defaults = true
+
+        if !state.settings.continueAfterQuit {
+            var settings = state.settings
+            settings.continueAfterQuit = true
+            state.updateSettings(settings)
+        }
+
+        if state.usingHelper, !state.isEnabled {
+            state.setEnabled(true)
         }
     }
 
