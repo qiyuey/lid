@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lid Release"
+  short_description: "Publish self-signed Lid releases"
+  default_prompt: "Use $lid-release to publish the next self-signed Lid release."
