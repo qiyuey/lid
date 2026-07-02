@@ -17,6 +17,12 @@ cask "lid" do
 
   app "Lid.app"
 
+  postflight do
+    system_command "/usr/bin/xattr",
+                   args:         ["-dr", "com.apple.quarantine", "#{appdir}/Lid.app"],
+                   must_succeed: false
+  end
+
   uninstall_preflight do
     lid = "#{appdir}/Lid.app/Contents/MacOS/Lid"
     system_command lid, args: ["--unregister-helper"], must_succeed: false if File.executable?(lid)
