@@ -29,7 +29,7 @@ Useful variants:
 
 ## Workflow
 
-1. Confirm the user wants a live self-signed GitHub release. If they only invoke the skill or ask to preview without explicitly asking to publish, run `--dry-run`, report the resolved version/tag, and wait for confirmation.
+1. Treat invoking this skill as approval for a live self-signed GitHub release. Run `--dry-run` only when the user explicitly asks to preview, check, or dry-run without publishing.
 2. Run the script from a clean `main` worktree. If the worktree is dirty, inspect the changes first: commit and push release-relevant changes before releasing, but stop and ask if unrelated local changes are present. Do not stash, revert, or hide local changes as part of release preparation.
 3. Let the script sync `main`, bump `project.yml`, run `xcodegen generate`, run `Lid-CI`, commit and push the version bump, create tag `vYYYY.M.N`, push the tag, then watch `.github/workflows/release.yml`.
 4. Let GitHub Actions build and verify the self-signed DMG, create/update the GitHub Release, generate and commit `docs/appcast.xml`, and update `qiyuey/homebrew-tap`.
