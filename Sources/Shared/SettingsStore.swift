@@ -9,12 +9,11 @@ public struct SettingsStore {
         static let lowBattery   = "lowBatteryThreshold"
         static let onlyCharging = "onlyWhileCharging"
         static let pauseThermal = "pauseOnHighThermal"
-        static let continueAfterQuit = "continueAfterQuit"
         static let seeded       = "settingsSeeded"
         static let autoOff      = "autoOffMinutes"
         static let language     = "languagePreference"
         static let onboarded    = "onboardingComplete"
-        static let helperVersion = "lastRegisteredHelperVersion"
+        static let helperRegistrationFingerprint = "lastRegisteredHelperRegistrationFingerprint"
     }
 
     public init(defaults: UserDefaults = .standard) {
@@ -26,8 +25,7 @@ public struct SettingsStore {
         return SafetySettings(
             lowBatteryThreshold: defaults.integer(forKey: Key.lowBattery),
             onlyWhileCharging: defaults.bool(forKey: Key.onlyCharging),
-            pauseOnHighThermal: defaults.bool(forKey: Key.pauseThermal),
-            continueAfterQuit: defaults.bool(forKey: Key.continueAfterQuit)
+            pauseOnHighThermal: defaults.bool(forKey: Key.pauseThermal)
         )
     }
 
@@ -35,7 +33,6 @@ public struct SettingsStore {
         defaults.set(settings.lowBatteryThreshold, forKey: Key.lowBattery)
         defaults.set(settings.onlyWhileCharging, forKey: Key.onlyCharging)
         defaults.set(settings.pauseOnHighThermal, forKey: Key.pauseThermal)
-        defaults.set(settings.continueAfterQuit, forKey: Key.continueAfterQuit)
         defaults.set(true, forKey: Key.seeded)
     }
 
@@ -66,17 +63,17 @@ public struct SettingsStore {
         defaults.set(complete, forKey: Key.onboarded)
     }
 
-    /// The helper version for which the privileged helper was last
-    /// (re-)registered. Empty until the first registration.
-    public func loadLastHelperVersion() -> String {
-        defaults.string(forKey: Key.helperVersion) ?? ""
+    /// The app/helper registration fingerprint that was last verified usable.
+    /// Empty until the first successful registration.
+    public func loadLastHelperRegistrationFingerprint() -> String {
+        defaults.string(forKey: Key.helperRegistrationFingerprint) ?? ""
     }
 
-    public func saveLastHelperVersion(_ version: String) {
-        defaults.set(version, forKey: Key.helperVersion)
+    public func saveLastHelperRegistrationFingerprint(_ fingerprint: String) {
+        defaults.set(fingerprint, forKey: Key.helperRegistrationFingerprint)
     }
 
-    public func clearLastHelperVersion() {
-        defaults.removeObject(forKey: Key.helperVersion)
+    public func clearLastHelperRegistrationFingerprint() {
+        defaults.removeObject(forKey: Key.helperRegistrationFingerprint)
     }
 }

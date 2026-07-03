@@ -1,3 +1,4 @@
+import AppKit
 import Darwin
 import Foundation
 import SwiftUI
@@ -21,7 +22,7 @@ struct LidApp: App {
                 .environmentObject(state)
                 .environmentObject(updater)
         } label: {
-            Image(state.isEnabled ? "MenubarLaptopActive" : "MenubarLaptop")
+            Image(state.showsActiveMenuBarIcon ? "MenubarLaptopActive" : "MenubarLaptop")
         }
         .menuBarExtraStyle(.window)
     }

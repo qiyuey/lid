@@ -34,7 +34,7 @@ final class BatteryMonitor: BatteryReading {
             return BatteryInfo(percent: percent, onAC: state == kIOPSACPowerValue)
         }
 
-        return BatteryInfo(percent: 0, onAC: false)
+        return .noBatteryPowerSource
     }
 
     func start(onChange: @escaping (BatteryInfo) -> Void) {

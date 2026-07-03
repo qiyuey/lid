@@ -44,7 +44,6 @@ private struct CoreSection: View {
         let text = state.text
         LiquidGlassSection(title: text.sectionControls) {
             PrimaryToggleRow()
-            ContinueAfterQuitRow()
             AutoOffRows()
 
             if let err = state.lastError {
@@ -72,26 +71,6 @@ private struct PrimaryToggleRow: View {
             .menuSwitchStyle()
             .disabled(!state.usingHelper || state.isChanging)
             .help(state.usingHelper ? text.primaryToggleLabel : state.helperUnavailableText)
-        }
-    }
-}
-
-private struct ContinueAfterQuitRow: View {
-    @EnvironmentObject var state: AppState
-
-    var body: some View {
-        let text = state.text
-        LiquidGlassRow(title: text.continueAfterQuitTitle) {
-            Toggle(text.continueAfterQuitTitle, isOn: Binding(
-                get: { state.settings.continueAfterQuit },
-                set: { value in
-                    var settings = state.settings
-                    settings.continueAfterQuit = value
-                    state.updateSettings(settings)
-                }
-            ))
-            .menuSwitchStyle()
-            .help(text.continueAfterQuitHelp)
         }
     }
 }

@@ -47,10 +47,14 @@ final class SafetyEvaluatorTests: XCTestCase {
         XCTAssertNil(SafetyEvaluator.reasonToDisable(battery: info, thermalSerious: false, settings: defaults))
     }
 
-    func testReasonMessages() {
-        XCTAssertEqual(SafetyReason.highThermal.message, "Auto-paused: the Mac is running hot.")
-        XCTAssertEqual(SafetyReason.notCharging.message, "Auto-paused: not on charger.")
-        XCTAssertEqual(SafetyReason.lowBattery(12).message, "Auto-paused: battery 12% on battery power.")
+    func testNoBatteryFallbackDoesNotTriggerBatterySafety() {
+        XCTAssertNil(
+            SafetyEvaluator.reasonToDisable(
+                battery: .noBatteryPowerSource,
+                thermalSerious: false,
+                settings: defaults
+            )
+        )
     }
 
     // MARK: SettingsStore
@@ -71,7 +75,6 @@ final class SafetyEvaluatorTests: XCTestCase {
         s.onlyWhileCharging = true
         s.pauseOnHighThermal = false
         s.lowBatteryThreshold = 35
-        s.continueAfterQuit = true
         store.save(s)
         XCTAssertEqual(store.load(), s)
         d.removePersistentDomain(forName: suite)

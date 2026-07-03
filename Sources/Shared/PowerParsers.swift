@@ -28,6 +28,10 @@ public struct BatteryInfo: Equatable, Sendable {
     public let percent: Int
     public let onAC: Bool
 
+    /// Safe default for desktops or transient IOKit read failures where no
+    /// present battery power source is reported.
+    public static let noBatteryPowerSource = BatteryInfo(percent: 100, onAC: true)
+
     public init(percent: Int, onAC: Bool) {
         self.percent = percent
         self.onAC = onAC

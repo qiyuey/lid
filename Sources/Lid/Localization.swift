@@ -68,8 +68,6 @@ struct AppStrings: Sendable {
 
     var primaryTitle: String { pick("Lid sleep prevention", "合盖防睡眠") }
     var primaryToggleLabel: String { pick("Enable lid sleep prevention", "开启合盖防睡眠") }
-    var continueAfterQuitTitle: String { pick("Continue after quit", "退出后继续生效") }
-    var continueAfterQuitHelp: String { pick("When enabled, quitting Lid leaves lid sleep prevention active.", "开启后，退出 Lid 不会恢复正常合盖睡眠。") }
     var installHelperRequiredMessage: String { pick("Install the background helper before enabling lid sleep prevention.", "请先安装后台 Helper，再开启合盖防睡眠。") }
     var safetyTitle: String { pick("Safety", "安全保护") }
     var onlyWhileCharging: String { pick("Only while charging", "仅充电时开启") }
@@ -104,10 +102,10 @@ struct AppStrings: Sendable {
     var onboardingHowSubtitle: String { pick("Lid changes only the behavior it needs to, then restores it.", "Lid 只修改必要的睡眠行为，并在关闭时恢复。") }
     var onboardingOverrideBullet: String { pick("Overrides the lid-close sleep that normally stops everything when you shut the lid.", "覆盖合盖时通常会中断任务的睡眠行为。") }
     var onboardingSafetyBullet: String { pick("Auto-pauses if the Mac runs hot or the battery runs low, so it stays safe unattended.", "温度过高或电量过低时自动暂停，降低无人看管时的风险。") }
-    var onboardingWatchdogBullet: String { pick("By default, a watchdog restores normal sleep if Lid ever quits or crashes.", "默认情况下，如果 Lid 退出或崩溃，看门狗会恢复正常睡眠。") }
+    var onboardingPersistenceBullet: String { pick("The helper keeps the selected sleep-prevention state until you turn it off.", "Helper 会保持选定的防睡眠状态，直到你手动关闭。") }
     var onboardingVentilationNote: String { pick("Keep your Mac plugged in and ventilated under heavy use.", "高负载时请接入电源，并保持散热通畅。") }
     var onboardingHelperTitle: String { pick("Install the background helper", "安装后台 Helper") }
-    var onboardingHelperSubtitle: String { pick("The helper controls lid sleep prevention and runs the watchdog.", "Helper 用于控制合盖防睡眠并运行看门狗。") }
+    var onboardingHelperSubtitle: String { pick("The helper controls and persists lid sleep prevention.", "Helper 用于控制并持久化合盖防睡眠。") }
     var onboardingHelperBody: String { pick("Install a small background helper before using lid sleep prevention.", "使用合盖防睡眠前，请先安装一个小型后台 Helper。") }
     var onboardingHelperRequired: String { pick("Required. Lid cannot change lid sleep prevention until the helper is installed and approved.", "必需。安装并批准 Helper 后，Lid 才能更改合盖防睡眠。") }
     var onboardingHelperActive: String { pick("Background helper installed and active.", "后台 Helper 已安装并启用。") }
@@ -134,11 +132,8 @@ struct AppStrings: Sendable {
             ? pick("The background helper reported success, but SleepDisabled is still off.", "后台 Helper 返回成功，但 SleepDisabled 仍未开启。")
             : pick("The background helper reported success, but SleepDisabled is still on.", "后台 Helper 返回成功，但 SleepDisabled 仍未关闭。")
     }
-    var continueAfterQuitHelperError: String { pick("Couldn’t tell the background helper to continue after quit.", "无法通知后台 Helper 在退出后继续生效。") }
     var turnOffFailedTitle: String { pick("Couldn’t turn lid sleep prevention off", "无法关闭合盖防睡眠") }
     var turnOnFailedTitle: String { pick("Couldn’t turn lid sleep prevention on", "无法开启合盖防睡眠") }
-    var quitRestoreFailedText: String { pick("Lid could not restore normal sleep before quitting. Quit anyway and let the background watchdog restore it shortly?", "Lid 退出前无法恢复正常睡眠。仍要退出，并让后台看门狗稍后恢复吗？") }
-    var quitAnyway: String { pick("Quit Anyway", "仍然退出") }
     var removeHelperTitle: String { pick("Remove background helper?", "移除后台 Helper？") }
     var removeHelperText: String { pick("Lid will restore normal sleep first, then remove its privileged helper. You will need to install the helper again before using lid sleep prevention.", "Lid 会先恢复正常睡眠，然后移除特权 Helper。之后如需使用合盖防睡眠，需要重新安装 Helper。") }
     var removeHelperButton: String { pick("Remove Helper", "移除 Helper") }
@@ -151,7 +146,6 @@ struct AppStrings: Sendable {
         pick("\(message)\n\nOpen Login Items, allow Lid's background helper, then try again.",
              "\(message)\n\n请打开登录项，允许 Lid 的后台 Helper，然后再次尝试。")
     }
-    var watchdogPolicyError: String { pick("The background helper couldn’t update its watchdog policy.", "后台 Helper 无法更新看门狗策略。") }
 
     func toggleFailedTitle(target: Bool) -> String {
         target ? turnOnFailedTitle : turnOffFailedTitle

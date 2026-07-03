@@ -149,13 +149,6 @@ final class HelperManager {
         }
     }
 
-    func setWatchdogEnabled(_ enabled: Bool,
-                            completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
-        callWithTimeout(completion: completion) { proxy, done in
-            proxy.setWatchdogEnabled(enabled) { ok, err in done(ok, err) }
-        }
-    }
-
     func getState(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         getStateResult { value, _ in completion(value) }
     }
@@ -166,17 +159,14 @@ final class HelperManager {
         }
     }
 
-    func heartbeat() {
-        remote({ _ in })?.heartbeat { _ in }
-    }
-
-    /// True if the daemon answers with the current helper version, false if it
-    /// can't be reached (connection error / timeout) or is an older helper.
+    /// True if the daemon answers with the app version/build embedded in this
+    /// app bundle, false if it can't be reached or belongs to another build.
     /// Used to detect registered-but-unlaunchable or stale helpers.
     func checkReachable(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        let expectedVersion = LidHelperIdentity.versionString(bundle: .main, environment: [:])
         callWithTimeout(timeout: Timing.reachabilityTimeout, completion: { ok, _ in completion(ok) }) { proxy, done in
             proxy.version { version in
-                done(version.hasPrefix("helper-\(LidHelperIdentity.helperVersion) "), nil)
+                done(version == expectedVersion, nil)
             }
         }
     }

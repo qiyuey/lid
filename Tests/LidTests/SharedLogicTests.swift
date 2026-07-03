@@ -59,20 +59,6 @@ final class SharedLogicTests: XCTestCase {
         XCTAssertEqual(info.source, "Battery")
     }
 
-    // MARK: Watchdog
-
-    func testWatchdogFiresAfterTimeout() {
-        let last = Date(timeIntervalSince1970: 1000)
-        let now = Date(timeIntervalSince1970: 1100) // 100s later
-        XCTAssertTrue(Watchdog.shouldAutoRestore(lastHeartbeat: last, now: now, timeout: 90))
-    }
-
-    func testWatchdogQuietWithinTimeout() {
-        let last = Date(timeIntervalSince1970: 1000)
-        let now = Date(timeIntervalSince1970: 1060) // 60s later
-        XCTAssertFalse(Watchdog.shouldAutoRestore(lastHeartbeat: last, now: now, timeout: 90))
-    }
-
     // MARK: SafetyPolicy
 
     func testSafetyDisablesOnLowBattery() {
@@ -174,7 +160,7 @@ final class SharedLogicTests: XCTestCase {
         XCTAssertFalse(requirement.contains(" or "))
     }
 
-    func testHelperVersionStringContainsHelperVersion() {
+    func testHelperVersionStringContainsAppVersionAndBuild() {
         let version = LidHelperIdentity.versionString(
             bundle: .main,
             environment: [
@@ -182,7 +168,7 @@ final class SharedLogicTests: XCTestCase {
                 LidHelperIdentity.appBuildEnvKey: "45"
             ]
         )
-        XCTAssertEqual(version, "helper-\(LidHelperIdentity.helperVersion) version-1.2.3 build-45")
+        XCTAssertEqual(version, "version-1.2.3 build-45")
     }
 
     // MARK: ProcessRunner

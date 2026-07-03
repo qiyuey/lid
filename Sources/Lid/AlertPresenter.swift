@@ -4,19 +4,6 @@ import AppKit
 struct AlertPresenter {
     let text: AppStrings
 
-    func presentQuitAfterRestoreFailure(onQuitAnyway: () -> Void) {
-        activateApp()
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = text.turnOffFailedTitle
-        alert.informativeText = text.quitRestoreFailedText
-        alert.addButton(withTitle: text.quitAnyway)
-        alert.addButton(withTitle: text.cancel)
-        if alert.runModal() == .alertFirstButtonReturn {
-            onQuitAnyway()
-        }
-    }
-
     func confirmUninstallHelper() -> Bool {
         activateApp()
         let alert = NSAlert()

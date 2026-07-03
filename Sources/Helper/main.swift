@@ -20,7 +20,7 @@ let clientRequirement = LidHelperIdentity.clientCodeSigningRequirement(appBundle
 let logger = Logger(subsystem: "top.qiyuey.lid", category: "helper-main")
 logger.info("Starting helper for \(machLabel, privacy: .public)")
 
-let delegate = HelperListenerDelegate(clientRequirement: clientRequirement)
+let delegate = HelperListenerDelegate(clientRequirement: clientRequirement, helperLabel: machLabel)
 let listener = NSXPCListener(machServiceName: machLabel)
 listener.setConnectionCodeSigningRequirement(clientRequirement)
 listener.delegate = delegate

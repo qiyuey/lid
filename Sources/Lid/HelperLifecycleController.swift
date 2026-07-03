@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 @MainActor
 protocol HelperManaging: AnyObject {
@@ -82,7 +83,7 @@ final class HelperLifecycleController {
             self.refreshStatus()
             self.usingHelper = self.installed && !self.needsApproval && reachable
             if self.usingHelper {
-                self.storeCurrentHelperVersion()
+                self.storeCurrentHelperRegistrationFingerprint()
                 completion(true)
             } else if attemptsRemaining > 1, self.installed, !self.needsApproval {
                 self.retryRefreshUsability(
@@ -91,7 +92,7 @@ final class HelperLifecycleController {
                     completion: completion
                 )
             } else {
-                self.clearStoredHelperVersion()
+                self.clearStoredHelperRegistrationFingerprint()
                 completion(false)
             }
         }
@@ -120,21 +121,46 @@ final class HelperLifecycleController {
         }
     }
 
+    @discardableResult
     func refreshRegistrationIfNeeded(
         maxAttempts: Int = Timing.statusReachabilityAttempts,
         retryDelay: TimeInterval = Timing.statusReachabilityRetryDelay,
         onRepairNeeded: @escaping @MainActor @Sendable () -> Void
-    ) {
+    ) -> Bool {
         let fingerprint = helperRegistrationFingerprint()
-        guard store.loadLastHelperVersion() != fingerprint else { return }
-        guard helper.isEnabled else { return }
-        refreshUsability(
-            maxAttempts: maxAttempts,
-            retryDelay: retryDelay
-        ) { usable in
-            guard !usable else { return }
-            onRepairNeeded()
+        guard store.loadLastHelperRegistrationFingerprint() != fingerprint else { return false }
+        refreshStatus()
+        guard installed, !needsApproval else { return false }
+        onRepairNeeded()
+        return true
+    }
+
+    private static func fileSHA256(_ url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return SHA256.hash(data: data)
+            .map { String(format: "%02X", $0) }
+            .joined()
+    }
+
+    private static func bundledHelperExecutableHash(bundle: Bundle) -> String? {
+        let helperURL = bundle.bundleURL
+            .appendingPathComponent("Contents/MacOS/LidHelper")
+        return fileSHA256(helperURL)
+    }
+
+    private static func bundledLaunchDaemonPlistURL(bundle: Bundle) -> URL? {
+        guard let appBundleID = bundle.bundleIdentifier else { return nil }
+        let helperLabel = LidHelperIdentity.label(appBundleID: appBundleID)
+        return bundle.bundleURL
+            .appendingPathComponent("Contents/Library/LaunchDaemons")
+            .appendingPathComponent("\(helperLabel).plist")
+    }
+
+    private static func bundledLaunchDaemonPlistHash(bundle: Bundle) -> String? {
+        guard let plistURL = bundledLaunchDaemonPlistURL(bundle: bundle) else {
+            return nil
         }
+        return fileSHA256(plistURL)
     }
 
     func recheckBecameUsable(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
@@ -185,7 +211,7 @@ final class HelperLifecycleController {
             self.refreshStatus()
             if errorMessage == nil {
                 self.usableBaseline = false
-                self.clearStoredHelperVersion()
+                self.clearStoredHelperRegistrationFingerprint()
             }
             completion(errorMessage)
         }
@@ -231,12 +257,12 @@ final class HelperLifecycleController {
         }
     }
 
-    func storeCurrentHelperVersion() {
-        store.saveLastHelperVersion(helperRegistrationFingerprint())
+    func storeCurrentHelperRegistrationFingerprint() {
+        store.saveLastHelperRegistrationFingerprint(helperRegistrationFingerprint())
     }
 
-    private func clearStoredHelperVersion() {
-        store.clearLastHelperVersion()
+    private func clearStoredHelperRegistrationFingerprint() {
+        store.clearLastHelperRegistrationFingerprint()
     }
 
     private func helperRegistrationFingerprint() -> String {
@@ -244,22 +270,23 @@ final class HelperLifecycleController {
     }
 
     private static func defaultRegistrationFingerprint() -> String {
-        let bundle = Bundle.main
+        defaultRegistrationFingerprint(bundle: .main)
+    }
+
+    private static func defaultRegistrationFingerprint(bundle: Bundle) -> String {
         let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
         let certificateSHA1 = bundledHelperEnvironmentValue(
             LidHelperIdentity.allowedClientCertificateSHA1EnvKey,
             bundle: bundle
         ) ?? "none"
-        return "helper-\(LidHelperIdentity.helperVersion)|version-\(version)|build-\(build)|cert-\(certificateSHA1)"
+        let helperHash = bundledHelperExecutableHash(bundle: bundle) ?? "none"
+        let plistHash = bundledLaunchDaemonPlistHash(bundle: bundle) ?? "none"
+        return "version-\(version)|build-\(build)|cert-\(certificateSHA1)|helper-\(helperHash)|plist-\(plistHash)"
     }
 
     private static func bundledHelperEnvironmentValue(_ key: String, bundle: Bundle) -> String? {
-        guard let appBundleID = bundle.bundleIdentifier else { return nil }
-        let helperLabel = LidHelperIdentity.label(appBundleID: appBundleID)
-        let plistURL = bundle.bundleURL
-            .appendingPathComponent("Contents/Library/LaunchDaemons")
-            .appendingPathComponent("\(helperLabel).plist")
+        guard let plistURL = bundledLaunchDaemonPlistURL(bundle: bundle) else { return nil }
         guard let plist = NSDictionary(contentsOf: plistURL),
               let environment = plist["EnvironmentVariables"] as? [String: String],
               let value = environment[key],

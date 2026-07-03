@@ -2,11 +2,12 @@ import Foundation
 import OSLog
 
 final class HelperListenerDelegate: NSObject, NSXPCListenerDelegate {
-    private let service = HelperService()
+    private let service: HelperService
     private let clientRequirement: String
 
-    init(clientRequirement: String) {
+    init(clientRequirement: String, helperLabel: String) {
         self.clientRequirement = clientRequirement
+        self.service = HelperService(helperLabel: helperLabel)
     }
 
     func listener(_ listener: NSXPCListener,
@@ -20,38 +21,53 @@ final class HelperListenerDelegate: NSObject, NSXPCListenerDelegate {
 }
 
 /// The actual privileged work. Runs as root, so it can call `pmset` directly
-/// with no admin prompt. Guards against a stuck-awake state with a watchdog.
+/// with no admin prompt. Owns and persists the user's sleep-prevention state.
 final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
     private let queue = DispatchQueue(label: "top.qiyuey.lid.helper.state")
     private let logger = Logger(subsystem: "top.qiyuey.lid", category: "helper-service")
-    private var lastHeartbeat = Date()
-    private var keepAwake = false
-    private var watchdogEnabled = true
-    private let watchdogTimeout: TimeInterval = 90
-    private var watchdogTimer: DispatchSourceTimer?
+    private let stateURL: URL
+    private let stateLoadError: String?
+    private var controlState: HelperSleepState
 
     private enum Verification {
         static let attempts = 5
         static let retryDelay: TimeInterval = 0.1
     }
 
-    override init() {
+    init(helperLabel: String = LidHelperIdentity.fallbackLabel) {
+        let stateURL = Self.stateURL(helperLabel: helperLabel)
+        let loaded = Self.loadState(from: stateURL)
+        self.stateURL = stateURL
+        self.stateLoadError = loaded.error
+        self.controlState = loaded.state
         super.init()
+        if let stateLoadError {
+            logger.error("Failed to load helper state, using defaults: \(stateLoadError, privacy: .public)")
+        }
         logger.info("Helper service initialized")
-        startWatchdog()
+        queue.async { [weak self] in
+            self?.applyPersistedSleepState()
+        }
     }
 
     // MARK: LidHelperProtocol
 
     func setKeepAwake(_ enabled: Bool, withReply reply: @escaping @Sendable (Bool, String?) -> Void) {
         queue.async {
+            let previous = self.controlState
             let result = self.runPmset(disableSleep: enabled)
             if result.ok {
                 self.logger.info("Set SleepDisabled to \(enabled, privacy: .public)")
-                self.keepAwake = enabled
-                self.lastHeartbeat = Date()
-                if enabled {
-                    self.watchdogEnabled = true
+                self.controlState.sleepPreventionEnabled = enabled
+                if let persistError = self.persistControlState() {
+                    self.logger.error("Failed to persist SleepDisabled \(enabled, privacy: .public): \(persistError, privacy: .public)")
+                    self.controlState = previous
+                    let rollback = self.runPmset(disableSleep: previous.sleepPreventionEnabled)
+                    if !rollback.ok {
+                        self.logger.error("Failed to roll back SleepDisabled after persistence failure: \(rollback.error ?? "unknown", privacy: .public)")
+                    }
+                    reply(false, "Couldn’t save helper state: \(persistError)")
+                    return
                 }
             } else {
                 self.logger.error("Failed to set SleepDisabled to \(enabled, privacy: .public): \(result.error ?? "unknown", privacy: .public)")
@@ -60,56 +76,14 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
         }
     }
 
-    func setWatchdogEnabled(_ enabled: Bool, withReply reply: @escaping @Sendable (Bool, String?) -> Void) {
-        queue.async {
-            self.logger.info("Set watchdog enabled to \(enabled, privacy: .public)")
-            self.watchdogEnabled = enabled
-            if enabled {
-                self.lastHeartbeat = Date()
-            }
-            reply(true, nil)
-        }
-    }
-
     func getState(withReply reply: @escaping @Sendable (Bool) -> Void) {
         queue.async {
-            reply(self.syncRuntimeStateFromSystem() ?? false)
-        }
-    }
-
-    func heartbeat(withReply reply: @escaping @Sendable (Bool) -> Void) {
-        queue.async {
-            self.syncRuntimeStateFromSystem()
-            self.lastHeartbeat = Date()
-            reply(true)
+            reply(self.controlState.sleepPreventionEnabled)
         }
     }
 
     func version(withReply reply: @escaping @Sendable (String) -> Void) {
         reply(LidHelperIdentity.versionString(bundle: .main))
-    }
-
-    // MARK: Watchdog
-
-    private func startWatchdog() {
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 30, repeating: 30)
-        timer.setEventHandler { [weak self] in
-            guard let self = self, self.keepAwake, self.watchdogEnabled else { return }
-            if Watchdog.shouldAutoRestore(lastHeartbeat: self.lastHeartbeat,
-                                          now: Date(),
-                                          timeout: self.watchdogTimeout) {
-                let result = self.runPmset(disableSleep: false)
-                if result.ok || Self.currentSleepDisabled() == false {
-                    self.logger.warning("Watchdog restored normal sleep after missed heartbeat")
-                    self.keepAwake = false
-                } else {
-                    self.logger.error("Watchdog failed to restore normal sleep: \(result.error ?? "unknown", privacy: .public)")
-                }
-            }
-        }
-        timer.resume()
-        watchdogTimer = timer
     }
 
     // MARK: Shell
@@ -146,11 +120,56 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
         return (false, "pmset reported success, but SleepDisabled is \(actual) after requesting \(requested)")
     }
 
-    @discardableResult
-    private func syncRuntimeStateFromSystem() -> Bool? {
-        guard let actual = Self.currentSleepDisabled() else { return nil }
-        keepAwake = actual
-        return actual
+    private func applyPersistedSleepState() {
+        let target = controlState.sleepPreventionEnabled
+        let result = runPmset(disableSleep: target)
+        if result.ok {
+            logger.info("Applied persisted SleepDisabled \(target, privacy: .public)")
+            return
+        }
+
+        logger.error("Failed to apply persisted SleepDisabled \(target, privacy: .public): \(result.error ?? "unknown", privacy: .public)")
+        if controlState.sleepPreventionEnabled {
+            controlState.sleepPreventionEnabled = false
+            if let persistError = persistControlState() {
+                logger.error("Failed to persist startup fallback state: \(persistError, privacy: .public)")
+            }
+        }
+    }
+
+    private func persistControlState() -> String? {
+        do {
+            let directory = stateURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(controlState)
+            try data.write(to: stateURL, options: [.atomic])
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    private static func stateURL(helperLabel: String) -> URL {
+        URL(fileURLWithPath: "/Library/Application Support", isDirectory: true)
+            .appendingPathComponent("Lid", isDirectory: true)
+            .appendingPathComponent(helperLabel, isDirectory: true)
+            .appendingPathComponent("helper-state.json")
+    }
+
+    private static func loadState(from url: URL) -> (state: HelperSleepState, error: String?) {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return (.default, nil)
+        }
+
+        do {
+            let data = try Data(contentsOf: url)
+            let state = try JSONDecoder().decode(HelperSleepState.self, from: data)
+            return (state, nil)
+        } catch {
+            return (.default, error.localizedDescription)
+        }
     }
 
     private static func capture(_ path: String, _ args: [String]) -> String? {

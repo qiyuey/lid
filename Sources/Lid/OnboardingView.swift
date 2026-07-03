@@ -16,7 +16,6 @@ struct OnboardingView: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: windowCornerRadius, style: .continuous)
-                .fill(.regularMaterial)
                 .glassEffect(in: .rect(cornerRadius: windowCornerRadius))
 
             GlassEffectContainer(spacing: 16) {
@@ -121,7 +120,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 12) {
                 bullet("macbook", text.onboardingOverrideBullet)
                 bullet("thermometer.medium", text.onboardingSafetyBullet)
-                bullet("shield.lefthalf.filled", text.onboardingWatchdogBullet)
+                bullet("shield.lefthalf.filled", text.onboardingPersistenceBullet)
             }
             Label(text.onboardingVentilationNote, systemImage: "info.circle")
                 .font(.callout)
@@ -217,19 +216,6 @@ struct OnboardingView: View {
                 disabled: !state.usingHelper || state.isChanging
             )
             .help(state.usingHelper ? text.primaryToggleLabel : state.helperUnavailableText)
-
-            onboardingToggleRow(
-                title: text.continueAfterQuitTitle,
-                isOn: Binding(
-                    get: { state.settings.continueAfterQuit },
-                    set: { value in
-                        var settings = state.settings
-                        settings.continueAfterQuit = value
-                        state.updateSettings(settings)
-                    }
-                )
-            )
-            .help(text.continueAfterQuitHelp)
 
             onboardingToggleRow(
                 title: text.onboardingLaunchAtLogin,
@@ -335,12 +321,6 @@ struct OnboardingView: View {
     private func applyStep4DefaultsIfNeeded() {
         guard !didApplyStep4Defaults else { return }
         didApplyStep4Defaults = true
-
-        if !state.settings.continueAfterQuit {
-            var settings = state.settings
-            settings.continueAfterQuit = true
-            state.updateSettings(settings)
-        }
 
         if state.usingHelper, !state.isEnabled {
             state.setEnabled(true)

@@ -5,23 +5,19 @@ public struct SafetySettings: Equatable, Sendable {
     public var lowBatteryThreshold: Int
     public var onlyWhileCharging: Bool
     public var pauseOnHighThermal: Bool
-    public var continueAfterQuit: Bool
 
     public static let `default` = SafetySettings(
         lowBatteryThreshold: 20,
         onlyWhileCharging: false,
-        pauseOnHighThermal: true,
-        continueAfterQuit: false
+        pauseOnHighThermal: true
     )
 
     public init(lowBatteryThreshold: Int,
                 onlyWhileCharging: Bool,
-                pauseOnHighThermal: Bool,
-                continueAfterQuit: Bool) {
+                pauseOnHighThermal: Bool) {
         self.lowBatteryThreshold = lowBatteryThreshold
         self.onlyWhileCharging = onlyWhileCharging
         self.pauseOnHighThermal = pauseOnHighThermal
-        self.continueAfterQuit = continueAfterQuit
     }
 }
 
@@ -30,24 +26,6 @@ public enum SafetyReason: Equatable, Sendable {
     case highThermal
     case notCharging
     case lowBattery(Int)
-
-    public var message: String {
-        switch self {
-        case .highThermal:        return "Auto-paused: the Mac is running hot."
-        case .notCharging:        return "Auto-paused: not on charger."
-        case .lowBattery(let p):  return "Auto-paused: battery \(p)% on battery power."
-        }
-    }
-
-    /// Phrasing for when the user *tries to turn keep-awake on* but the policy
-    /// won't allow it (vs. `message`, which describes a background auto-pause).
-    public var blockedMessage: String {
-        switch self {
-        case .highThermal:        return "Your Mac is running hot, so keep-awake is paused. It'll be available again once the Mac cools down."
-        case .notCharging:        return "\u{201C}Only while charging\u{201D} is on, so connect your Mac to power to keep it awake."
-        case .lowBattery(let p):  return "Battery is at \(p)%. Charge above the low-battery cutoff to keep your Mac awake."
-        }
-    }
 }
 
 /// Pure safety decision. No side effects, fully unit-testable.

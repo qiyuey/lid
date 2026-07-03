@@ -38,12 +38,6 @@ if pgrep -x "$APP_NAME" >/dev/null; then
     pkill -x "$APP_NAME" || true
 fi
 
-if [ -x "$DEST/Contents/MacOS/$APP_NAME" ]; then
-    echo "-> unregister existing helper if present"
-    "$DEST/Contents/MacOS/$APP_NAME" --unregister-helper >/dev/null 2>&1 || true
-    sleep 1
-fi
-
 echo "-> unregister old LaunchServices entries"
 unregister_launch_services_app "$DEST"
 if [ -d build ]; then
@@ -78,4 +72,4 @@ codesign -dv --verbose=2 "$DEST" 2>&1 | sed -n '1,35p'
 
 echo "-> launch $DEST"
 /usr/bin/open "$DEST"
-echo "Installed self-signed $DEST. Install or approve the helper from Lid's menu if macOS requests it."
+echo "Installed self-signed $DEST. Existing helper registrations are preserved; Lid will repair or ask for approval if macOS requires it."
