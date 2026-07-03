@@ -100,7 +100,7 @@ Menu UI should stay compact and native:
 ## Testing Guidelines
 
 Tests use XCTest. Add or update tests in `Tests/LidTests` when changing
-parsers, safety policy, watchdog behavior, settings persistence, helper
+parsers, safety policy, helper-persisted state, settings persistence, helper
 identity, or auto-off logic. Name tests with the `test...` prefix and make
 expected behavior clear, for example `testSafetyDisablesOnLowBattery`. Run
 `Lid-CI` before opening a PR.
@@ -123,5 +123,6 @@ menu/UI changes.
 ## Security & Configuration Tips
 
 This app controls lid-close sleep through privileged helper behavior. Avoid
-silent failure paths, preserve watchdog restore behavior, and keep Debug bundle
-IDs isolated from Release IDs as defined in `project.yml`.
+silent failure paths, preserve helper-owned state persistence and restore-before-removal
+behavior, and keep Debug bundle IDs isolated from Release IDs as defined in
+`project.yml`.

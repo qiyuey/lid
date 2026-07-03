@@ -16,7 +16,7 @@ tucked away.
 
 ## Download
 
-Get the latest signed macOS build from
+Get the latest self-signed macOS build from
 [GitHub Releases](https://github.com/qiyuey/lid/releases).
 
 ### Homebrew
@@ -49,9 +49,10 @@ xattr -rd com.apple.quarantine "/Applications/Lid.app"
 Lid requires a small privileged helper before it can change lid sleep
 prevention. Install and approve the helper during setup.
 
-The helper is also used for the watchdog restore behavior: when **Continue
-after quit** is off, the helper restores normal lid-close sleep if Lid exits or
-stops checking in.
+The helper owns and persists the selected lid sleep-prevention state. If Lid
+quits, the helper keeps the last selected state until you turn lid sleep
+prevention off, use the auto-off timer while Lid is running, or remove the
+helper from the menu.
 
 ## Diagnostics
 
@@ -70,9 +71,8 @@ log stream --style compact --info --predicate 'subsystem == "top.qiyuey.lid"'
 ## Controls
 
 - **Lid sleep prevention** keeps the Mac awake when the lid is closed.
-- **Continue after quit** leaves lid sleep prevention active after quitting Lid.
 - **Turn off after** automatically returns to normal lid-close sleep after a
-  chosen time.
+  chosen time while Lid is running.
 - **Only while charging** pauses lid sleep prevention when the Mac is on
   battery power.
 - **Pause when running hot** pauses lid sleep prevention during high thermal
@@ -81,7 +81,8 @@ log stream --style compact --info --predicate 'subsystem == "top.qiyuey.lid"'
   below the selected percentage.
 - **Language** follows the system language or locks the app to English or
   Chinese.
-- **Launch at login** starts Lid automatically after signing in.
+- **Launch at login** starts the Lid app automatically after signing in. The
+  background helper is managed separately by macOS once installed and approved.
 - **Check automatically** lets Sparkle check for signed updates in the
   background.
 
@@ -94,7 +95,7 @@ GitHub project, and quits Lid.
 | --- | --- | --- | --- | --- |
 | Lid-closed, no display | Yes | Needs setup | No | No |
 | No repeated password prompts | Yes | Yes | Yes | No |
-| Crash/quit restore | Watchdog helper | No | Not applicable | No |
+| Quit behavior | Helper keeps selected state | App-dependent | Not applicable | No |
 | Battery and thermal guards | Yes | Partial | Limited | No |
 | Auto-off timer | Yes | Yes | Yes | With flags |
 | Open source | Yes | No | Yes | Apple system tool |
@@ -106,8 +107,9 @@ Running a MacBook closed under heavy load can increase heat and drain battery.
 Keep the machine plugged in and ventilated, especially during long builds or
 remote sessions.
 
-Lid's safety controls reduce risk, but they do not replace common sense. A
-reboot always resets the underlying system sleep flag.
+Lid's safety controls reduce risk, but they do not replace common sense. The
+auto-off timer and safety guards run in the app; if Lid is not running, the
+helper preserves the last selected state.
 
 ## Updates and Removal
 

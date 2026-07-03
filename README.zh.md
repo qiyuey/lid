@@ -15,7 +15,7 @@ Lid 是一个为 AI agent 时代打造的轻量 macOS 菜单栏应用。
 
 ## 下载
 
-从 [GitHub Releases](https://github.com/qiyuey/lid/releases) 下载最新的 macOS 签名版本。
+从 [GitHub Releases](https://github.com/qiyuey/lid/releases) 下载最新的 macOS 自签名版本。
 
 ### Homebrew
 
@@ -44,7 +44,9 @@ xattr -rd com.apple.quarantine "/Applications/Lid.app"
 
 使用合盖防睡眠前，Lid 需要安装一个小型特权 Helper。请在设置流程中安装并批准 Helper。
 
-Helper 也负责看门狗恢复：当 **退出后继续生效** 关闭时，如果 Lid 退出或停止发送心跳，Helper 会恢复正常的合盖睡眠。
+Helper 负责保存并执行当前选择的合盖防睡眠状态。退出 Lid 后，Helper
+会继续保持最后一次选择，直到你关闭合盖防睡眠、在 Lid
+运行时触发自动关闭计时器，或从菜单中移除 Helper。
 
 ## 诊断
 
@@ -63,13 +65,13 @@ log stream --style compact --info --predicate 'subsystem == "top.qiyuey.lid"'
 ## 控制项
 
 - **合盖防睡眠**：合盖后仍然让 Mac 保持运行。
-- **退出后继续生效**：退出 Lid 后仍然保留合盖防睡眠状态。
-- **自动关闭时间**：到达指定时间后自动恢复正常合盖睡眠。
+- **自动关闭时间**：Lid 运行时，到达指定时间后自动恢复正常合盖睡眠。
 - **仅充电时开启**：Mac 使用电池时暂停合盖防睡眠。
 - **温度过高时暂停**：系统热压力较高时暂停合盖防睡眠。
 - **低电量阈值**：电量低于指定比例时关闭合盖防睡眠。
 - **语言**：跟随系统语言，或固定使用中文 / 英文。
-- **登录时启动**：登录 macOS 后自动启动 Lid。
+- **登录时启动**：登录 macOS 后自动启动 Lid app。后台 Helper
+  安装并批准后由 macOS 单独管理。
 - **自动检查更新**：让 Sparkle 在后台检查已签名的新版本。
 
 底部操作按钮依次用于打开设置向导、手动检查更新、打开 GitHub 项目、退出 Lid。
@@ -80,7 +82,7 @@ log stream --style compact --info --predicate 'subsystem == "top.qiyuey.lid"'
 | --- | --- | --- | --- | --- |
 | 无外接显示器合盖运行 | 支持 | 需配置 | 不支持 | 不支持 |
 | 避免反复输入密码 | 支持 | 支持 | 支持 | 不支持 |
-| 退出/崩溃后恢复睡眠 | Helper 看门狗 | 不支持 | 不涉及 | 不支持 |
+| 退出后行为 | Helper 保持选定状态 | 取决于 app | 不涉及 | 不支持 |
 | 电量和温度保护 | 支持 | 部分支持 | 有限 | 不支持 |
 | 自动关闭计时器 | 支持 | 支持 | 支持 | 需参数 |
 | 开源 | 支持 | 不支持 | 支持 | Apple 系统工具 |
@@ -90,7 +92,8 @@ log stream --style compact --info --predicate 'subsystem == "top.qiyuey.lid"'
 
 MacBook 在合盖状态下高负载运行可能升温并消耗电量。长时间构建或远程会话时，请尽量接入电源并保持散热通畅。
 
-Lid 的安全保护可以降低风险，但不能替代基本判断。重启总是会重置底层系统睡眠标志。
+Lid 的安全保护可以降低风险，但不能替代基本判断。自动关闭计时器和安全保护运行在
+app 内；如果 Lid 未运行，Helper 会保持最后一次选择的状态。
 
 ## 更新和移除
 
