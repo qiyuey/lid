@@ -44,15 +44,108 @@ private struct CoreSection: View {
         let text = state.text
         LiquidGlassSection(title: text.sectionControls) {
             PrimaryToggleRow()
+            HelperAttentionNotice()
             AutoOffRows()
 
-            if let err = state.lastError {
+            if let err = inlineError {
                 Label(err, systemImage: "info.circle")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 6)
             }
+        }
+    }
+
+    private var inlineError: String? {
+        guard let err = state.lastError else { return nil }
+        guard !state.usingHelper else { return err }
+
+        let helperAvailabilityMessages = [
+            state.text.approveHelperPrompt,
+            state.text.approveHelperThenTry,
+            state.text.helperNoResponse,
+            state.text.installHelperRequiredMessage,
+            state.helperUnavailableText
+        ]
+        return helperAvailabilityMessages.contains(err) ? nil : err
+    }
+}
+
+private struct HelperAttentionNotice: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        if !state.usingHelper {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: iconName)
+                    .font(.title3)
+                    .foregroundStyle(.orange)
+                    .frame(width: 22)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.callout.weight(.semibold))
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                Button(actionTitle) {
+                    performAction()
+                }
+                .buttonStyle(.glassProminent)
+                .help(message)
+            }
+            .padding(.top, 4)
+            .padding(.bottom, 6)
+        }
+    }
+
+    private var text: AppStrings { state.text }
+
+    private var iconName: String {
+        state.helperNeedsApproval ? "person.crop.circle.badge.exclamationmark" : "exclamationmark.triangle.fill"
+    }
+
+    private var title: String {
+        if state.helperNeedsApproval {
+            return text.helperApprovalRequiredTitle
+        }
+        if state.helperInstalled {
+            return text.helperUnavailableTitle
+        }
+        return text.helperRequiredTitle
+    }
+
+    private var message: String {
+        if state.helperNeedsApproval {
+            return text.helperApprovalRequiredBody
+        }
+        if state.helperInstalled {
+            return text.helperUnavailableBody
+        }
+        return text.helperRequiredBody
+    }
+
+    private var actionTitle: String {
+        if state.helperNeedsApproval {
+            return text.open
+        }
+        if state.helperInstalled {
+            return text.repair
+        }
+        return text.install
+    }
+
+    private func performAction() {
+        if state.helperNeedsApproval {
+            state.openLoginItems()
+        } else {
+            state.installHelper()
         }
     }
 }
@@ -246,11 +339,11 @@ private struct HelperRow: View {
             .buttonStyle(.glassProminent)
             .help(text.onboardingOpenLoginItems)
         } else if state.helperInstalled {
-            Button(text.open) {
-                state.openLoginItems()
+            Button(text.repair) {
+                state.installHelper()
             }
             .buttonStyle(.glassProminent)
-            .help(text.onboardingOpenLoginItems)
+            .help(text.helperUnavailableBody)
         } else {
             Button(text.install) {
                 state.installHelper()

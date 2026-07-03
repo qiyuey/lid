@@ -295,7 +295,7 @@ final class AppState: ObservableObject {
             }
             return
         }
-        helperLifecycle.register { [weak self] becameUsable, errorMessage in
+        helperLifecycle.register(maxAttempts: 1, retryDelay: 0) { [weak self] becameUsable, errorMessage in
             guard let self else { return }
             syncHelperStatus()
             if helperLifecycle.needsApproval {
@@ -313,6 +313,10 @@ final class AppState: ObservableObject {
             // it as the same enable transition the approval path would hit.
             if becameUsable {
                 refreshState()
+            } else {
+                lastError = text.approveHelperPrompt
+                helper.openLoginItemsSettings()
+                startHelperApprovalPolling()
             }
         }
     }

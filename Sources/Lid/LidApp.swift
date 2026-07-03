@@ -50,8 +50,14 @@ private enum MaintenanceCommand {
 
         if CommandLine.arguments.contains("--unregister-helper") {
             do {
-                try HelperManager().unregister()
-                print("Background helper unregistered.")
+                let helper = HelperManager()
+                try helper.unregister()
+                if waitForHelperUnregistered(helper) {
+                    print("Background helper unregistered.")
+                } else {
+                    fputs("Timed out waiting for background helper to unregister.\n", stderr)
+                    exit(EXIT_FAILURE)
+                }
                 exit(EXIT_SUCCESS)
             } catch {
                 fputs("Failed to unregister background helper: \(error.localizedDescription)\n", stderr)
@@ -85,6 +91,21 @@ private enum MaintenanceCommand {
             reachable == nil
         }
         return reachable == true
+    }
+
+    @MainActor
+    private static func waitForHelperUnregistered(_ helper: HelperManager,
+                                                  maxAttempts: Int = 20,
+                                                  retryDelay: TimeInterval = 0.5) -> Bool {
+        for attempt in 1...maxAttempts {
+            if !helper.isEnabled && !helper.requiresApproval {
+                return true
+            }
+            if attempt < maxAttempts {
+                pumpRunLoop(until: Date().addingTimeInterval(retryDelay))
+            }
+        }
+        return !helper.isEnabled && !helper.requiresApproval
     }
 
     @MainActor

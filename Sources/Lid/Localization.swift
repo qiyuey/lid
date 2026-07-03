@@ -51,6 +51,7 @@ struct AppStrings: Sendable {
     var skip: String { pick("Skip", "跳过") }
     var open: String { pick("Open", "打开") }
     var install: String { pick("Install", "安装") }
+    var repair: String { pick("Repair", "修复") }
     var remove: String { pick("Remove", "移除") }
     var check: String { pick("Check", "检查") }
     var done: String { pick("Done", "完成") }
@@ -84,6 +85,12 @@ struct AppStrings: Sendable {
     var setupGuideTitle: String { pick("Setup Guide", "设置向导") }
     var helperTitle: String { pick("Background helper", "后台 Helper") }
     var pendingHelperTitle: String { pick("Pending helper", "待批准 Helper") }
+    var helperRequiredTitle: String { pick("Helper required", "需要安装 Helper") }
+    var helperApprovalRequiredTitle: String { pick("Helper needs approval", "需要批准 Helper") }
+    var helperUnavailableTitle: String { pick("Helper unavailable", "Helper 不可用") }
+    var helperRequiredBody: String { pick("Install and approve the helper before using lid sleep prevention.", "安装并批准 Helper 后，才能使用合盖防睡眠。") }
+    var helperApprovalRequiredBody: String { pick("Open Login Items and allow Lid's background helper.", "打开登录项并允许 Lid 的后台 Helper。") }
+    var helperUnavailableBody: String { pick("Repair the helper registration, then try the switch again.", "修复 Helper 注册后，再尝试开关。") }
     var turnOffAfterTitle: String { pick("Turn off after", "自动关闭") }
     var turningOffInTitle: String { pick("Turning off in", "剩余时间") }
     var checkAutomaticallyTitle: String { pick("Check automatically", "自动检查") }
