@@ -78,6 +78,8 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
 
     func getState(withReply reply: @escaping @Sendable (Bool) -> Void) {
         queue.async {
+            // The helper-owned persisted state is the authority. External
+            // `pmset` changes are intentionally not synced back into Lid state.
             reply(self.controlState.sleepPreventionEnabled)
         }
     }

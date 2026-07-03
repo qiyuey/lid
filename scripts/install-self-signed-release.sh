@@ -7,7 +7,6 @@ cd "$(dirname "$0")/.."
 APP_NAME="Lid"
 APP_ID="top.qiyuey.lid"
 BUILD_DIR="${BUILD_DIR:-build/local-self-signed-install}"
-LEGACY_LOCAL_RELEASE_DERIVED_DATA="${LEGACY_LOCAL_RELEASE_DERIVED_DATA:-build/LocalReleaseInstallDerivedData}"
 DEST="/Applications/$APP_NAME.app"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
@@ -44,11 +43,6 @@ if [ -d build ]; then
     while IFS= read -r app_path; do
         unregister_launch_services_app "$app_path"
     done < <(find build -path "*/$APP_NAME.app" -type d -prune 2>/dev/null)
-fi
-
-if [ -d "$LEGACY_LOCAL_RELEASE_DERIVED_DATA" ]; then
-    echo "-> remove legacy raw Release build output"
-    rm -rf "$LEGACY_LOCAL_RELEASE_DERIVED_DATA"
 fi
 
 echo "-> install $DMG"
