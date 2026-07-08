@@ -37,6 +37,7 @@ targets:
         SUFeedURL: https://raw.githubusercontent.com/qiyuey/lid/main/docs/appcast.xml
         SUPublicEDKey: dckHUqDIcxNZCpJR5HErR90BA2jfh4n9VKz1Ne7kRF4=
         SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: true
         SUScheduledCheckInterval: 86400
     settings:
       base:

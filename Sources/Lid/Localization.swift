@@ -74,7 +74,6 @@ struct AppStrings: Sendable {
     var setupGuideTitle: String { pick("Setup Guide", "设置向导") }
     var checkAutomaticallyTitle: String { pick("Check automatically", "自动检查") }
     var checkNowTitle: String { pick("Check now", "立即检查") }
-    var versionTitle: String { pick("Version", "版本") }
 
     // MARK: Onboarding
 

@@ -5,19 +5,40 @@
 [![Downloads](https://img.shields.io/github/downloads/qiyuey/lid/total)](https://github.com/qiyuey/lid/releases)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Anti--996-blue)](LICENSE)
 
-Lid is a lightweight, modern macOS menu-bar app for the AI-agent era. It keeps
-your Mac running with the lid closed so Codex, Claude Code, Cursor, OpenClaw,
-Hermes, builds, downloads, and remote sessions can keep working while your
-MacBook is tucked away.
+Lid is a lightweight, modern macOS menu-bar app for keeping a MacBook awake
+while the lid is closed.
+
+It is built around one idea: do the essential job directly, verify the real
+system state, and avoid hidden complexity.
 
 <p align="center">
   <img src="docs/menu-popover.png" alt="Lid menu bar popover" width="360">
 </p>
 
-## Download
+## Philosophy
 
-Get the latest self-signed macOS build from
-[GitHub Releases](https://github.com/qiyuey/lid/releases).
+Lid is intentionally small. It does not try to become a full power-management
+suite, and it does not hide the cost of changing a system setting.
+
+- **One clear job**: keep the Mac running with the lid closed when you need
+  long-running work to continue.
+- **System truth first**: the UI follows the real macOS power state, not an
+  optimistic local toggle.
+- **Direct control**: when the state changes, Lid asks macOS for administrator
+  authorization and applies the system power setting directly.
+- **Automatic restore, same path**: while Lid is running, it checks for drift
+  and uses the same administrator authorization flow if the last verified state
+  needs to be restored.
+- **No hidden machinery**: Lid stays a menu-bar app with a compact, native
+  interface.
+
+## Works Well For
+
+- AI agent sessions such as Codex, Claude Code, Cursor, OpenClaw, and Hermes.
+- Long builds, downloads, sync jobs, and remote sessions.
+- Desk setups where the MacBook is closed and stored away.
+
+## Install
 
 ### Homebrew
 
@@ -26,7 +47,7 @@ brew tap qiyuey/tap
 brew install --cask lid
 ```
 
-To upgrade later:
+Upgrade later with:
 
 ```bash
 brew upgrade --cask lid
@@ -34,8 +55,11 @@ brew upgrade --cask lid
 
 ### Manual Download
 
-Lid requires macOS 26 or later. After downloading, move `Lid.app` to
-`/Applications` and open it from the menu bar.
+Download the latest macOS build from
+[GitHub Releases](https://github.com/qiyuey/lid/releases), move `Lid.app` to
+`/Applications`, and open it from the menu bar.
+
+Lid requires macOS 26 or later.
 
 If macOS says the app is damaged or cannot be opened, clear the quarantine
 attribute after installing:
@@ -44,28 +68,23 @@ attribute after installing:
 xattr -rd com.apple.quarantine "/Applications/Lid.app"
 ```
 
-## First Run
+## Use
 
-Lid changes the macOS power setting directly. When you turn lid sleep prevention
-on or off, macOS asks for administrator authorization.
+Turn **Lid sleep prevention** on when you want the Mac to keep running with the
+lid closed. Turn it off when you want normal lid-close sleep behavior again.
 
-The selected state stays in macOS power settings until you turn it off. The
-menu-bar app reads the current setting whenever it opens.
+macOS asks for administrator authorization when Lid changes the power setting.
+The selected state remains in macOS power settings until you change it again.
 
-## Why Lid
+The menu also includes:
 
-- **Lightweight by design**: one menu-bar app, with no extra system background
-  component or always-running service.
-- **Modern macOS experience**: native SwiftUI controls, Liquid Glass styling,
-  bilingual UI, and signed Sparkle updates.
-- **Direct and predictable**: Lid changes the system `SleepDisabled` setting,
-  then verifies the real `pmset` state before updating the UI.
-- **Built for long-running work**: agent sessions, builds, downloads, and
-  remote access can continue while the MacBook is closed and stored away.
+- **Language**: follow the system language, or choose English or Chinese.
+- **Launch at login**: open Lid automatically after signing in.
+- **Check automatically**: let Sparkle check for signed updates.
 
-## Diagnostics
+## Verify
 
-For sleep-state issues, collect a compact local snapshot:
+For a compact local snapshot:
 
 ```bash
 ./scripts/diagnose.sh
@@ -77,29 +96,14 @@ To inspect live Lid logs:
 log stream --style compact --info --predicate 'subsystem == "top.qiyuey.lid"'
 ```
 
-## Controls
+## Remove
 
-- **Lid sleep prevention** keeps the Mac awake when the lid is closed.
-- **Language** follows the system language or locks the app to English or
-  Chinese.
-- **Launch at login** starts the Lid app automatically after signing in.
-- **Check automatically** lets Sparkle check for signed updates in the
-  background.
-
-The bottom action row opens the setup guide, checks for updates, opens the
-GitHub project, and quits Lid.
-
-## Updates and Removal
-
-Use the update button in Lid or download a newer build from
-[GitHub Releases](https://github.com/qiyuey/lid/releases).
-
-To stop using Lid, turn **Lid sleep prevention** off first, then quit the app
-and delete `/Applications/Lid.app`.
+Turn **Lid sleep prevention** off, quit Lid, then delete
+`/Applications/Lid.app`.
 
 ## Development
 
-Developer and contributor notes live in [AGENTS.md](AGENTS.md).
+Developer notes live in [AGENTS.md](AGENTS.md).
 
 ## Security
 
@@ -107,6 +111,4 @@ To report a security issue, see [SECURITY.md](SECURITY.md).
 
 ## License
 
-This project includes MIT-licensed upstream work © 2026 Nghia Luong. qiyuey's
-changes and distribution are additionally made available under the
-[Anti 996 License v1.0](LICENSE-ANTI-996) where legally applicable.
+See [LICENSE](LICENSE) and [LICENSE-ANTI-996](LICENSE-ANTI-996).

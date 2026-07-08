@@ -102,4 +102,15 @@ final class SharedLogicTests: XCTestCase {
         store.saveLanguagePreference("chinese")
         XCTAssertEqual(SettingsStore(defaults: defaults).loadLanguagePreference(), "chinese")
     }
+
+    func testDesiredSleepPreventionStatePersists() {
+        let defaults = UserDefaults(suiteName: "lid.test.desired-state.persist")!
+        defaults.removePersistentDomain(forName: "lid.test.desired-state.persist")
+        let store = SettingsStore(defaults: defaults)
+        XCTAssertNil(store.loadDesiredSleepPreventionEnabled())
+        store.saveDesiredSleepPreventionEnabled(true)
+        XCTAssertEqual(SettingsStore(defaults: defaults).loadDesiredSleepPreventionEnabled(), true)
+        store.saveDesiredSleepPreventionEnabled(false)
+        XCTAssertEqual(SettingsStore(defaults: defaults).loadDesiredSleepPreventionEnabled(), false)
+    }
 }

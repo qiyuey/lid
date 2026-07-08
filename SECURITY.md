@@ -26,6 +26,9 @@ administrator authorization, so a few areas matter more than usual:
   administrator privileges.
 - **State verification**: after changing the setting, Lid reads `pmset -g` and
   verifies the observed `SleepDisabled` flag matches the requested state.
+- **Automatic restore**: while Lid is running, it may ask for administrator
+  authorization again if the observed system setting drifts away from the last
+  successfully verified state.
 - **Power-setting persistence**: if Lid is not running, the last selected macOS
   power setting remains in effect until the user changes it again.
 - **Sparkle updates**: update metadata and downloads are signed; please report

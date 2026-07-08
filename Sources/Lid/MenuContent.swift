@@ -107,12 +107,6 @@ private struct AppSection: View {
                 Toggle(text.checkAutomaticallyTitle, isOn: $updater.automaticallyChecksForUpdates)
                     .menuSwitchStyle()
             }
-
-            LiquidGlassRow(title: text.versionTitle) {
-                Text(state.appVersion)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
         }
     }
 }
@@ -126,6 +120,12 @@ private struct FooterActions: View {
     var body: some View {
         let text = state.text
         HStack {
+            Text("v\(state.appVersion)")
+                .font(.caption2)
+                .monospacedDigit()
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+
             Spacer()
 
             Button {

@@ -25,6 +25,7 @@ final class AppState: ObservableObject {
     private let store = SettingsStore()
     private let loginItem = LoginItemManager()
     private lazy var onboarding = OnboardingController(state: self)
+    private let automaticRestoreRetryInterval: TimeInterval = 10 * 60
 
     /// Marketing version shown in the menu.
     var appVersion: String {
@@ -41,12 +42,15 @@ final class AppState: ObservableObject {
 
     private var stateRefreshTimer: Timer?
     private var stateChangeRequestID = 0
+    private var desiredSleepPreventionEnabled: Bool?
+    private var lastAutomaticRestoreAttempt: Date?
     private var didBecomeActiveObserver: NSObjectProtocol?
     private var localeObserver: NSObjectProtocol?
 
     init() {
         languagePreference = AppLanguagePreference(rawValue: store.loadLanguagePreference()) ?? .system
         onboardingComplete = store.loadOnboardingComplete()
+        desiredSleepPreventionEnabled = store.loadDesiredSleepPreventionEnabled()
         launchAtLogin = loginItem.isEnabled
         refreshState()
         stateRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
@@ -134,6 +138,7 @@ final class AppState: ObservableObject {
                 let enabled = try await self.power.isSleepPreventionEnabledAsync()
                 guard !self.isChanging else { return }
                 self.applyObservedEnabledState(enabled)
+                self.restoreObservedStateIfNeeded(enabled)
             } catch {
                 self.lastError = self.text.powerReadFailed(self.powerErrorDetails(error))
                 self.logger.error("Refresh state failed: \(error.localizedDescription, privacy: .public)")
@@ -169,6 +174,7 @@ final class AppState: ObservableObject {
                 }
 
                 self.lastError = nil
+                self.rememberDesiredSleepPreventionState(target)
                 self.finishStateChange(requestID)
                 completion?(true)
             } catch {
@@ -217,6 +223,32 @@ final class AppState: ObservableObject {
 
     private func applyObservedEnabledState(_ value: Bool) {
         isEnabled = value
+        if desiredSleepPreventionEnabled == nil {
+            rememberDesiredSleepPreventionState(value)
+        }
+        if desiredSleepPreventionEnabled == value {
+            lastAutomaticRestoreAttempt = nil
+        }
+    }
+
+    private func rememberDesiredSleepPreventionState(_ value: Bool) {
+        desiredSleepPreventionEnabled = value
+        store.saveDesiredSleepPreventionEnabled(value)
+    }
+
+    private func restoreObservedStateIfNeeded(_ observed: Bool) {
+        guard let desired = desiredSleepPreventionEnabled else { return }
+        guard desired != observed else { return }
+        guard shouldAttemptAutomaticRestore() else { return }
+
+        lastAutomaticRestoreAttempt = Date()
+        logger.info("Restoring SleepDisabled drift. desired=\(desired, privacy: .public) observed=\(observed, privacy: .public)")
+        setEnabled(desired, userInitiated: false)
+    }
+
+    private func shouldAttemptAutomaticRestore(now: Date = Date()) -> Bool {
+        guard let lastAutomaticRestoreAttempt else { return true }
+        return now.timeIntervalSince(lastAutomaticRestoreAttempt) >= automaticRestoreRetryInterval
     }
 
     private func userMessage(for error: Error, target: Bool) -> String {
