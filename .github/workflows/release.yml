@@ -49,6 +49,9 @@ jobs:
           test -n "$SPARKLE_PRIVATE_KEY"
           test -n "$HOMEBREW_TAP_TOKEN"
 
+      - name: Remove preinstalled AWS tap
+        run: brew untap aws/tap || true
+
       - name: Install tools
         run: brew install xcodegen
 
