@@ -47,94 +47,14 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       configs:
         # Debug builds get a `.dev` bundle id so a dev build coexists with the
-        # released app — separate UserDefaults, login item, and helper daemon.
+        # released app — separate UserDefaults and login item.
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: top.qiyuey.lid.dev
         Release:
           PRODUCT_BUNDLE_IDENTIFIER: top.qiyuey.lid
     dependencies:
-      - target: LidHelper
-        copy:
-          destination: executables
       - package: Sparkle
         product: Sparkle
-    postBuildScripts:
-      # Generate the privileged helper's LaunchDaemon plist from the app's bundle
-      # id so the Release and `.dev` builds register isolated daemons. Runs before
-      # the app is code-signed, so the plist is sealed into the bundle.
-      - name: Generate helper LaunchDaemon plist
-        basedOnDependencyAnalysis: false
-        script: |
-          set -euo pipefail
-          APP_ID="${PRODUCT_BUNDLE_IDENTIFIER}"
-          HELPER_ID="${APP_ID}.helper"
-          CERT_CN="${LID_SELF_SIGNED_CERT_CN:-}"
-          CERT_SHA1="${LID_SELF_SIGNED_CERT_SHA1:-}"
-          APP_VERSION="${MARKETING_VERSION:-0}"
-          APP_BUILD="${CURRENT_PROJECT_VERSION:-0}"
-          DEST="${CODESIGNING_FOLDER_PATH}/Contents/Library/LaunchDaemons"
-          mkdir -p "$DEST"
-          PLIST="${DEST}/${HELPER_ID}.plist"
-          CERT_CN_ENTRY=""
-          CERT_SHA1_ENTRY=""
-          if [ -n "$CERT_CN" ]; then
-            CERT_CN_ENTRY="                  <key>LID_ALLOWED_CLIENT_CERTIFICATE_CN</key><string>${CERT_CN}</string>"
-          fi
-          if [ -n "$CERT_SHA1" ]; then
-            CERT_SHA1_ENTRY="                  <key>LID_ALLOWED_CLIENT_CERTIFICATE_SHA1</key><string>${CERT_SHA1}</string>"
-          fi
-          cat > "$PLIST" <<PLIST
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>Label</key><string>${HELPER_ID}</string>
-              <key>BundleProgram</key><string>Contents/MacOS/LidHelper</string>
-              <key>MachServices</key><dict><key>${HELPER_ID}</key><true/></dict>
-              <key>RunAtLoad</key><true/>
-              <key>KeepAlive</key><true/>
-              <key>EnvironmentVariables</key><dict>
-                  <key>LID_MACH_LABEL</key><string>${HELPER_ID}</string>
-                  <key>LID_ALLOWED_CLIENT_BUNDLE_ID</key><string>${APP_ID}</string>
-          ${CERT_CN_ENTRY}
-          ${CERT_SHA1_ENTRY}
-                  <key>LID_APP_VERSION</key><string>${APP_VERSION}</string>
-                  <key>LID_APP_BUILD</key><string>${APP_BUILD}</string>
-              </dict>
-          </dict>
-          </plist>
-          PLIST
-          plutil -lint "$PLIST"
-
-  LidHelper:
-    type: tool
-    platform: macOS
-    sources:
-      - Sources/Helper
-      - Sources/Shared
-    settings:
-      base:
-        PRODUCT_NAME: LidHelper
-        ENABLE_HARDENED_RUNTIME: YES
-        # The helper is embedded into the app bundle via the app target's
-        # `copy: executables` dependency. Without this, the tool target is also
-        # installed to Products/usr/local/bin in the archive, leaving two install
-        # products so Xcode writes no ApplicationProperties — which makes
-        # `xcodebuild -exportArchive` reject every distribution method.
-        SKIP_INSTALL: YES
-        # Embed an Info.plist (with CFBundleIdentifier) into the tool binary.
-        # SMAppService daemons need this code identity to form the launch
-        # constraint (LWCR) that ties the daemon to the app; without it macOS
-        # refuses to exec the daemon ("could not find and/or execute program"
-        # / copy_bundle_path error) and the helper never launches.
-        GENERATE_INFOPLIST_FILE: YES
-        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
-      configs:
-        # Helper bundle id tracks the app's (`<app id>.helper`) per build config.
-        Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: top.qiyuey.lid.dev.helper
-        Release:
-          PRODUCT_BUNDLE_IDENTIFIER: top.qiyuey.lid.helper
 
   LidTests:
     type: bundle.unit-test
@@ -142,8 +62,8 @@ targets:
     sources:
       - Tests/LidTests
       - Sources/Shared
-      - Sources/Lid/HelperLifecycleController.swift
       - Sources/Lid/Localization.swift
+      - Sources/Lid/PowerController.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: top.qiyuey.lidTests
@@ -162,7 +82,6 @@ schemes:
     build:
       targets:
         Lid: all
-        LidHelper: all
         LidTests: [test]
     test:
       targets:

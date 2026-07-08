@@ -5,10 +5,10 @@
 [![Downloads](https://img.shields.io/github/downloads/qiyuey/lid/total)](https://github.com/qiyuey/lid/releases)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Anti--996-blue)](LICENSE)
 
-Lid is a tiny macOS menu-bar app built for the AI-agent era. It keeps your Mac
-running with the lid closed so Codex, Claude Code, Cursor, OpenClaw, Hermes,
-builds, downloads, and remote sessions can keep working while your MacBook is
-tucked away.
+Lid is a lightweight, modern macOS menu-bar app for the AI-agent era. It keeps
+your Mac running with the lid closed so Codex, Claude Code, Cursor, OpenClaw,
+Hermes, builds, downloads, and remote sessions can keep working while your
+MacBook is tucked away.
 
 <p align="center">
   <img src="docs/menu-popover.png" alt="Lid menu bar popover" width="360">
@@ -46,17 +46,26 @@ xattr -rd com.apple.quarantine "/Applications/Lid.app"
 
 ## First Run
 
-Lid requires a small privileged helper before it can change lid sleep
-prevention. Install and approve the helper during setup.
+Lid changes the macOS power setting directly. When you turn lid sleep prevention
+on or off, macOS asks for administrator authorization.
 
-The helper owns and persists the selected lid sleep-prevention state. If Lid
-quits, the helper keeps the last selected state until you turn lid sleep
-prevention off, use the auto-off timer while Lid is running, or remove the
-helper from the menu.
+The selected state stays in macOS power settings until you turn it off. The
+menu-bar app reads the current setting whenever it opens.
+
+## Why Lid
+
+- **Lightweight by design**: one menu-bar app, with no extra system background
+  component or always-running service.
+- **Modern macOS experience**: native SwiftUI controls, Liquid Glass styling,
+  bilingual UI, and signed Sparkle updates.
+- **Direct and predictable**: Lid changes the system `SleepDisabled` setting,
+  then verifies the real `pmset` state before updating the UI.
+- **Built for long-running work**: agent sessions, builds, downloads, and
+  remote access can continue while the MacBook is closed and stored away.
 
 ## Diagnostics
 
-For helper, XPC, or sleep-state issues, collect a compact local snapshot:
+For sleep-state issues, collect a compact local snapshot:
 
 ```bash
 ./scripts/diagnose.sh
@@ -71,54 +80,22 @@ log stream --style compact --info --predicate 'subsystem == "top.qiyuey.lid"'
 ## Controls
 
 - **Lid sleep prevention** keeps the Mac awake when the lid is closed.
-- **Turn off after** automatically returns to normal lid-close sleep after a
-  chosen time while Lid is running.
-- **Only while charging** pauses lid sleep prevention when the Mac is on
-  battery power.
-- **Pause when running hot** pauses lid sleep prevention during high thermal
-  pressure.
-- **Low-battery cutoff** turns lid sleep prevention off when battery level drops
-  below the selected percentage.
 - **Language** follows the system language or locks the app to English or
   Chinese.
-- **Launch at login** starts the Lid app automatically after signing in. The
-  background helper is managed separately by macOS once installed and approved.
+- **Launch at login** starts the Lid app automatically after signing in.
 - **Check automatically** lets Sparkle check for signed updates in the
   background.
 
 The bottom action row opens the setup guide, checks for updates, opens the
 GitHub project, and quits Lid.
 
-## Compared With Other Tools
-
-| Feature | Lid | Amphetamine | KeepingYouAwake | `caffeinate` |
-| --- | --- | --- | --- | --- |
-| Lid-closed, no display | Yes | Needs setup | No | No |
-| No repeated password prompts | Yes | Yes | Yes | No |
-| Quit behavior | Helper keeps selected state | App-dependent | Not applicable | No |
-| Battery and thermal guards | Yes | Partial | Limited | No |
-| Auto-off timer | Yes | Yes | Yes | With flags |
-| Open source | Yes | No | Yes | Apple system tool |
-| AI focus | Codex/Claude/Cursor/OpenClaw/Hermes | General | General | CLI |
-
-## Safety
-
-Running a MacBook closed under heavy load can increase heat and drain battery.
-Keep the machine plugged in and ventilated, especially during long builds or
-remote sessions.
-
-Lid's safety controls reduce risk, but they do not replace common sense. The
-auto-off timer and safety guards run in the app; if Lid is not running, the
-helper preserves the last selected state.
-
 ## Updates and Removal
 
 Use the update button in Lid or download a newer build from
 [GitHub Releases](https://github.com/qiyuey/lid/releases).
 
-To stop using Lid, turn **Lid sleep prevention** off first, then quit the app.
-If you installed the background helper, remove it from the menu before deleting
-`/Applications/Lid.app`.
+To stop using Lid, turn **Lid sleep prevention** off first, then quit the app
+and delete `/Applications/Lid.app`.
 
 ## Development
 

@@ -2,7 +2,6 @@ import Foundation
 import ServiceManagement
 
 /// Launch-at-login for the app itself, via SMAppService.mainApp.
-/// Separate from the privileged helper daemon.
 struct LoginItemManager {
     private var service: SMAppService { .mainApp }
 

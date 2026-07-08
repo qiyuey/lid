@@ -1,16 +1,13 @@
 import SwiftUI
 
-/// First-run setup walkthrough. Explains what Lid does and walks the user
-/// through the required system step — installing the background helper —
-/// then hands off to the menu bar. Surfaces existing `AppState` flows only; it
-/// introduces no new permission logic.
+/// First-run setup walkthrough. Explains what Lid does, then hands off to the
+/// menu bar. The actual power setting change happens only when the user flips
+/// the switch and approves macOS administrator authorization.
 struct OnboardingView: View {
     @EnvironmentObject var state: AppState
     @State private var step = 0
-    @State private var didApplyStep4Defaults = false
 
-    private let lastStep = 3
-    private let helperStepIndex = 2
+    private let lastStep = 2
     private let windowCornerRadius: CGFloat = 28
 
     var body: some View {
@@ -89,7 +86,6 @@ struct OnboardingView: View {
         switch step {
         case 0: welcomeStep
         case 1: howItWorksStep
-        case 2: helperStep
         default: doneStep
         }
     }
@@ -119,70 +115,10 @@ struct OnboardingView: View {
             header(symbol: "bolt.fill", title: text.onboardingHowTitle, subtitle: text.onboardingHowSubtitle)
             VStack(alignment: .leading, spacing: 12) {
                 bullet("macbook", text.onboardingOverrideBullet)
-                bullet("thermometer.medium", text.onboardingSafetyBullet)
+                bullet("touchid", text.onboardingAuthorizationBullet)
                 bullet("shield.lefthalf.filled", text.onboardingPersistenceBullet)
             }
-            Label(text.onboardingVentilationNote, systemImage: "info.circle")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
         }
-    }
-
-    @ViewBuilder
-    private var helperStep: some View {
-        let text = state.text
-        VStack(alignment: .leading, spacing: 18) {
-            header(symbol: "key.fill", title: text.onboardingHelperTitle, subtitle: text.onboardingHelperSubtitle)
-            Text(text.onboardingHelperBody)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            helperStatusBox
-
-            Text(text.onboardingHelperRequired)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    @ViewBuilder
-    private var helperStatusBox: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if state.usingHelper {
-                Label(state.text.onboardingHelperActive, systemImage: "checkmark.shield.fill")
-                    .foregroundStyle(.green)
-            } else if state.helperNeedsApproval {
-                Label(state.text.onboardingHelperApproval, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button {
-                    state.installHelper()
-                } label: {
-                    Label(state.text.onboardingOpenLoginItems, systemImage: "gearshape")
-                }
-                .buttonStyle(.glass)
-            } else {
-                Button {
-                    state.installHelper()
-                } label: {
-                    Label(state.text.onboardingInstallHelper, systemImage: "key.fill")
-                }
-                .buttonStyle(.glassProminent)
-            }
-
-            if let err = state.lastError, !state.usingHelper {
-                Text(err)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(in: .rect(cornerRadius: 14))
     }
 
     @ViewBuilder
@@ -198,9 +134,6 @@ struct OnboardingView: View {
             onboardingOptionsBox
                 .padding(.top, 8)
         }
-        .onAppear {
-            applyStep4DefaultsIfNeeded()
-        }
     }
 
     @ViewBuilder
@@ -213,9 +146,9 @@ struct OnboardingView: View {
                     get: { state.isEnabled },
                     set: { state.setEnabled($0, userInitiated: true) }
                 ),
-                disabled: !state.usingHelper || state.isChanging
+                disabled: state.isChanging
             )
-            .help(state.usingHelper ? text.primaryToggleLabel : state.helperUnavailableText)
+            .help(text.primaryToggleLabel)
 
             onboardingToggleRow(
                 title: text.onboardingLaunchAtLogin,
@@ -264,7 +197,7 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: Helpers
+    // MARK: Utilities
 
     private func header(symbol: String, title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -310,21 +243,7 @@ struct OnboardingView: View {
             return
         }
 
-        if step == helperStepIndex, !state.usingHelper {
-            state.installHelper()
-            return
-        }
-
         withAnimation(.easeInOut(duration: 0.18)) { step += 1 }
-    }
-
-    private func applyStep4DefaultsIfNeeded() {
-        guard !didApplyStep4Defaults else { return }
-        didApplyStep4Defaults = true
-
-        if state.usingHelper, !state.isEnabled {
-            state.setEnabled(true)
-        }
     }
 
     private func symbolTile(_ symbol: String, size: CGFloat, fontSize: CGFloat) -> some View {

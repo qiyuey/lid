@@ -4,27 +4,6 @@ import AppKit
 struct AlertPresenter {
     let text: AppStrings
 
-    func confirmUninstallHelper() -> Bool {
-        activateApp()
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = text.removeHelperTitle
-        alert.informativeText = text.removeHelperText
-        alert.addButton(withTitle: text.removeHelperButton)
-        alert.addButton(withTitle: text.cancel)
-        return alert.runModal() == .alertFirstButtonReturn
-    }
-
-    func presentHelperUninstallRestoreFailure(message: String) {
-        activateApp()
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = text.removeHelperFailedTitle
-        alert.informativeText = text.removeHelperFailedText(message)
-        alert.addButton(withTitle: text.ok)
-        alert.runModal()
-    }
-
     func presentToggleFailure(target: Bool, message: String) {
         activateApp()
         let alert = NSAlert()
@@ -33,19 +12,6 @@ struct AlertPresenter {
         alert.informativeText = message
         alert.addButton(withTitle: text.ok)
         alert.runModal()
-    }
-
-    func presentHelperFailure(message: String, onOpenLoginItems: () -> Void) {
-        activateApp()
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = text.turnOnFailedTitle
-        alert.informativeText = text.helperFailureText(message)
-        alert.addButton(withTitle: text.onboardingOpenLoginItems)
-        alert.addButton(withTitle: text.cancel)
-        if alert.runModal() == .alertFirstButtonReturn {
-            onOpenLoginItems()
-        }
     }
 
     private func activateApp() {

@@ -66,4 +66,4 @@ codesign -dv --verbose=2 "$DEST" 2>&1 | sed -n '1,35p'
 
 echo "-> launch $DEST"
 /usr/bin/open "$DEST"
-echo "Installed self-signed $DEST. Existing helper registrations are preserved; Lid will repair or ask for approval if macOS requires it."
+echo "Installed self-signed $DEST. Lid will ask for administrator authorization when changing lid sleep prevention."

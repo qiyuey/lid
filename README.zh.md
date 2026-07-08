@@ -5,7 +5,7 @@
 [![Downloads](https://img.shields.io/github/downloads/qiyuey/lid/total)](https://github.com/qiyuey/lid/releases)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Anti--996-blue)](LICENSE)
 
-Lid 是一个为 AI agent 时代打造的轻量 macOS 菜单栏应用。
+Lid 是一个为 AI agent 时代打造的轻量、现代化 macOS 菜单栏应用。
 
 合盖后，Codex、Claude Code、Cursor、OpenClaw、Hermes、构建、下载和远程会话可以继续运行。
 
@@ -42,15 +42,20 @@ xattr -rd com.apple.quarantine "/Applications/Lid.app"
 
 ## 首次使用
 
-使用合盖防睡眠前，Lid 需要安装一个小型特权 Helper。请在设置流程中安装并批准 Helper。
+Lid 会直接修改 macOS 电源设置。开启或关闭合盖防睡眠时，macOS 会要求管理员授权。
 
-Helper 负责保存并执行当前选择的合盖防睡眠状态。退出 Lid 后，Helper
-会继续保持最后一次选择，直到你关闭合盖防睡眠、在 Lid
-运行时触发自动关闭计时器，或从菜单中移除 Helper。
+选定状态会保留在 macOS 电源设置中，直到你手动关闭。菜单栏 app 每次打开时都会读取当前状态。
+
+## 为什么选择 Lid
+
+- **轻量设计**：只有一个菜单栏 app，没有额外的系统后台组件或常驻服务。
+- **现代 macOS 体验**：原生 SwiftUI 控件、Liquid Glass 风格、中英文界面，以及已签名的 Sparkle 更新。
+- **直接且可验证**：Lid 修改系统 `SleepDisabled` 设置后，会读取真实 `pmset` 状态再更新界面。
+- **面向长时间任务**：合盖收纳 MacBook 时，agent 会话、构建、下载和远程访问仍可继续运行。
 
 ## 诊断
 
-遇到 Helper、XPC 通信或睡眠状态问题时，可以收集一份本机诊断快照：
+遇到睡眠状态问题时，可以收集一份本机诊断快照：
 
 ```bash
 ./scripts/diagnose.sh
@@ -65,41 +70,17 @@ log stream --style compact --info --predicate 'subsystem == "top.qiyuey.lid"'
 ## 控制项
 
 - **合盖防睡眠**：合盖后仍然让 Mac 保持运行。
-- **自动关闭时间**：Lid 运行时，到达指定时间后自动恢复正常合盖睡眠。
-- **仅充电时开启**：Mac 使用电池时暂停合盖防睡眠。
-- **温度过高时暂停**：系统热压力较高时暂停合盖防睡眠。
-- **低电量阈值**：电量低于指定比例时关闭合盖防睡眠。
 - **语言**：跟随系统语言，或固定使用中文 / 英文。
-- **登录时启动**：登录 macOS 后自动启动 Lid app。后台 Helper
-  安装并批准后由 macOS 单独管理。
+- **登录时启动**：登录 macOS 后自动启动 Lid app。
 - **自动检查更新**：让 Sparkle 在后台检查已签名的新版本。
 
 底部操作按钮依次用于打开设置向导、手动检查更新、打开 GitHub 项目、退出 Lid。
-
-## 和其他工具对比
-
-| 功能 | Lid | Amphetamine | KeepingYouAwake | `caffeinate` |
-| --- | --- | --- | --- | --- |
-| 无外接显示器合盖运行 | 支持 | 需配置 | 不支持 | 不支持 |
-| 避免反复输入密码 | 支持 | 支持 | 支持 | 不支持 |
-| 退出后行为 | Helper 保持选定状态 | 取决于 app | 不涉及 | 不支持 |
-| 电量和温度保护 | 支持 | 部分支持 | 有限 | 不支持 |
-| 自动关闭计时器 | 支持 | 支持 | 支持 | 需参数 |
-| 开源 | 支持 | 不支持 | 支持 | Apple 系统工具 |
-| AI agent 定位 | Codex、Claude Code、Cursor、OpenClaw、Hermes | 通用 | 通用 | 基础命令 |
-
-## 安全
-
-MacBook 在合盖状态下高负载运行可能升温并消耗电量。长时间构建或远程会话时，请尽量接入电源并保持散热通畅。
-
-Lid 的安全保护可以降低风险，但不能替代基本判断。自动关闭计时器和安全保护运行在
-app 内；如果 Lid 未运行，Helper 会保持最后一次选择的状态。
 
 ## 更新和移除
 
 可以使用 Lid 里的更新按钮，或从 [GitHub Releases](https://github.com/qiyuey/lid/releases) 下载新版本。
 
-如果要停止使用 Lid，先关闭 **合盖防睡眠**，再退出应用。如果安装过后台 Helper，请先在菜单中移除 Helper，再删除 `/Applications/Lid.app`。
+如果要停止使用 Lid，先关闭 **合盖防睡眠**，再退出应用并删除 `/Applications/Lid.app`。
 
 ## 开发
 

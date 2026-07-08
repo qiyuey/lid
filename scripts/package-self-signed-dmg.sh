@@ -1,8 +1,7 @@
 #!/bin/bash
 # Build a self-signed, unnotarized DMG for free GitHub distribution/testing.
 # The signing identity is stable because it is created once in the login
-# keychain, reused by common name on later runs, and pinned into the helper by
-# exact leaf certificate SHA-1.
+# keychain and reused by common name on later runs.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -102,7 +101,6 @@ sign_app() {
     sign_path "$sparkle/Versions/B/Updater.app"
     sign_path "$sparkle/Versions/B/Autoupdate"
     sign_path "$sparkle"
-    sign_path "$APP/Contents/MacOS/LidHelper"
     sign_app_bundle
 }
 
@@ -137,7 +135,7 @@ CERT_SHA1="$(certificate_sha1)"
 echo "→ generate project"
 xcodegen generate
 
-echo "→ build unsigned app with self-signed helper requirement"
+echo "→ build unsigned app"
 echo "→ pinned certificate SHA-1: $CERT_SHA1"
 rm -rf "$BUILD_DIR"
 xcodebuild build \
@@ -145,9 +143,7 @@ xcodebuild build \
     -destination 'generic/platform=macOS' \
     -configuration "$CONFIGURATION" \
     -derivedDataPath "$DERIVED_DATA" \
-    CODE_SIGNING_ALLOWED=NO \
-    LID_SELF_SIGNED_CERT_CN="$CERT_CN" \
-    LID_SELF_SIGNED_CERT_SHA1="$CERT_SHA1"
+    CODE_SIGNING_ALLOWED=NO
 
 echo "→ sign app bundle"
 sign_app
@@ -156,7 +152,6 @@ echo "→ verify app signature"
 codesign --verify --deep --strict --verbose=2 "$APP"
 codesign -d --entitlements :- "$APP" 2>/dev/null | grep -q 'com.apple.security.cs.disable-library-validation'
 codesign -R="identifier \"top.qiyuey.lid\" and certificate leaf = H\"$CERT_SHA1\"" -v "$APP"
-codesign -R="identifier \"top.qiyuey.lid.helper\" and certificate leaf = H\"$CERT_SHA1\"" -v "$APP/Contents/MacOS/LidHelper"
 
 echo "→ create DMG"
 DMG="$(make_dmg)"

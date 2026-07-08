@@ -1,6 +1,6 @@
 import Foundation
 
-/// Pure parsing helpers for `pmset` output. Kept free of side effects so they
+/// Pure parsers for `pmset` output. Kept free of side effects so they
 /// can be unit-tested without touching real power management.
 public enum PowerParsers {
 
@@ -21,33 +21,5 @@ public enum PowerParsers {
             return remainder == "1"
         }
         return nil
-    }
-}
-
-public struct BatteryInfo: Equatable, Sendable {
-    public let percent: Int
-    public let onAC: Bool
-
-    /// Safe default for desktops or transient IOKit read failures where no
-    /// present battery power source is reported.
-    public static let noBatteryPowerSource = BatteryInfo(percent: 100, onAC: true)
-
-    public init(percent: Int, onAC: Bool) {
-        self.percent = percent
-        self.onAC = onAC
-    }
-
-    public var source: String { onAC ? "AC" : "Battery" }
-}
-
-public enum BatteryParsers {
-    /// Parse `pmset -g batt` output into a BatteryInfo.
-    public static func parse(pmsetBatt output: String) -> BatteryInfo {
-        var percent = 0
-        if let range = output.range(of: #"\d+%"#, options: .regularExpression) {
-            percent = Int(output[range].dropLast()) ?? 0
-        }
-        let onAC = output.contains("AC Power")
-        return BatteryInfo(percent: percent, onAC: onAC)
     }
 }

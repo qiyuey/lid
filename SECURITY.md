@@ -18,18 +18,19 @@ observed. I'll acknowledge as soon as I can and keep you posted on a fix.
 
 ## Security-relevant surface
 
-Lid is not sandboxed and installs a **privileged background helper** to do its
-job, so a few areas matter more than usual:
+Lid is not sandboxed and changes a system power setting after macOS
+administrator authorization, so a few areas matter more than usual:
 
-- **Root LaunchDaemon** (`LidHelper`) registered via `SMAppService`. It runs as
-  root and toggles the macOS `SleepDisabled` flag (`IOPMrootDomain`).
-- **XPC interface** (`LidHelperProtocol`) between the menu-bar app and the
-  helper — the only channel the app uses to change power state.
-- **Heartbeat watchdog**: if the app stops checking in (>90s), the helper
-  restores normal sleep on its own, so the Mac can't get stuck awake after a
-  crash.
-- **Admin-prompt fallback** (`PowerManager`) shells out to `pmset` via `osascript`
-  with administrator privileges when the helper isn't installed.
+- **Administrator authorization**: the app asks macOS to run
+  `/usr/bin/pmset -a disablesleep 1` or `0` through `osascript` with
+  administrator privileges.
+- **State verification**: after changing the setting, Lid reads `pmset -g` and
+  verifies the observed `SleepDisabled` flag matches the requested state.
+- **Power-setting persistence**: if Lid is not running, the last selected macOS
+  power setting remains in effect until the user changes it again.
+- **Sparkle updates**: update metadata and downloads are signed; please report
+  any issue that could bypass update validation.
 
-Issues in any of these (privilege escalation, unauthorized XPC use, the watchdog
-failing to restore sleep) are the most valuable to report.
+Issues in any of these (privilege escalation, command injection, state
+verification failure, or update validation bypass) are the most valuable to
+report.

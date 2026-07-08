@@ -6,12 +6,11 @@ Lid is a macOS SwiftUI menu-bar app generated with XcodeGen. `project.yml` is
 the source of truth; do not hand-edit the generated `Lid.xcodeproj`.
 
 - `Sources/Lid/`: app UI, menu settings, app state, updater, onboarding, and
-  helper lifecycle code.
-- `Sources/Helper/`: privileged root helper launched through `SMAppService`.
-- `Sources/Shared/`: pure shared logic used by the app, helper, and tests.
-- `Tests/LidTests/`: XCTest coverage for shared logic and safety behavior.
+  direct macOS power-setting control.
+- `Sources/Shared/`: pure shared logic used by the app and tests.
+- `Tests/LidTests/`: XCTest coverage for shared logic and app behavior.
 - `Resources/Assets.xcassets/`: app icon and menu-bar template images.
-- `scripts/`: release automation, Sparkle tooling, icon helpers, and the
+- `scripts/`: release automation, Sparkle tooling, icon generation tools, and the
   lid-close spike script.
 - `docs/`: public assets such as screenshots and the Sparkle appcast.
 
@@ -66,16 +65,15 @@ update Sparkle appcasts, or publish GitHub releases.
 ## Coding Style & Naming Conventions
 
 Use Swift 6 conventions with 4-space indentation. Keep SwiftUI app code in
-`Sources/Lid`, helper-only code in `Sources/Helper`, and deterministic logic in
-`Sources/Shared`. Prefer small, explicit types such as `SafetyEvaluator`,
-`BatteryMonitor`, and `HelperLifecycleController`. Use `// MARK:` only where it
-improves navigation.
+`Sources/Lid` and deterministic logic in `Sources/Shared`. Prefer small,
+explicit types such as `PowerController`. Use `// MARK:` only where it improves
+navigation.
 
 Menu UI should stay compact and native:
 
 - Keep settings in the menu-bar popover, grouped through titled `MenuSection`
   blocks and rows through `SettingRow`; prefer a small number of consolidated
-  groups such as core controls, safety, and app maintenance.
+  groups such as core controls and app maintenance.
 - Use native SwiftUI Liquid Glass surfaces (`.glassEffect`,
   `.buttonStyle(.glass)`, `.buttonStyle(.glassProminent)`) and system controls
   (`Toggle`, `Picker`, `Slider`, `Button`, `Link`); do not fake glass with
@@ -83,8 +81,6 @@ Menu UI should stay compact and native:
 - Keep trailing controls aligned to the shared right column in `SettingRow`.
 - Do not add explanatory subtitle text inside menu rows unless the user
   explicitly asks for it.
-- Do not show current battery percentage/status in the menu; keep only safety
-  controls such as the low-battery cutoff.
 - Keep Setup Guide, manual update check, GitHub/source, and quit in the bottom
   action row, without an extra enclosing menu section/frame. Use native glass
   icon buttons for clear system actions, use the GitHub mark for the source
@@ -100,9 +96,8 @@ Menu UI should stay compact and native:
 ## Testing Guidelines
 
 Tests use XCTest. Add or update tests in `Tests/LidTests` when changing
-parsers, safety policy, helper-persisted state, settings persistence, helper
-identity, or auto-off logic. Name tests with the `test...` prefix and make
-expected behavior clear, for example `testSafetyDisablesOnLowBattery`. Run
+parsers, direct power-setting commands, settings persistence, or menu behavior.
+Name tests with the `test...` prefix and make expected behavior clear. Run
 `Lid-CI` before opening a PR.
 
 ## Release & Versioning
@@ -122,7 +117,7 @@ menu/UI changes.
 
 ## Security & Configuration Tips
 
-This app controls lid-close sleep through privileged helper behavior. Avoid
-silent failure paths, preserve helper-owned state persistence and restore-before-removal
-behavior, and keep Debug bundle IDs isolated from Release IDs as defined in
-`project.yml`.
+This app controls lid-close sleep by asking macOS for administrator
+authorization and setting `pmset -a disablesleep` directly. Avoid silent failure
+paths, confirm the observed `SleepDisabled` state after changes, and keep Debug
+bundle IDs isolated from Release IDs as defined in `project.yml`.

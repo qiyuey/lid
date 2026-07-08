@@ -4,7 +4,7 @@ cask "lid" do
 
   url "https://github.com/qiyuey/lid/releases/download/v#{version}/Lid-#{version}-self-signed.dmg"
   name "Lid"
-  desc "Control MacBook lid-close sleep for long-running work"
+  desc "Lightweight modern menu bar control for MacBook lid-close sleep"
   homepage "https://github.com/qiyuey/lid"
 
   livecheck do
@@ -23,17 +23,7 @@ cask "lid" do
                    must_succeed: false
   end
 
-  uninstall_preflight do
-    lid = "#{appdir}/Lid.app/Contents/MacOS/Lid"
-    system_command lid, args: ["--unregister-helper"], must_succeed: false if File.executable?(lid)
-  end
-
-  uninstall launchctl: "top.qiyuey.lid.helper",
-            quit:      "top.qiyuey.lid",
-            delete:    [
-              "/Library/LaunchDaemons/top.qiyuey.lid.helper.plist",
-              "/Library/PrivilegedHelperTools/top.qiyuey.lid.helper",
-            ]
+  uninstall quit: "top.qiyuey.lid"
 
   zap trash: [
     "~/Library/Application Support/top.qiyuey.lid",

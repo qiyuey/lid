@@ -3,7 +3,7 @@
 # Keep a MacBook (Apple Silicon) running EVEN WITH THE LID CLOSED so coding
 # agents keep working. Mechanism: set the SleepDisabled flag in IOPMrootDomain
 # via `pmset -a disablesleep`. This shell version is the spike; the real app
-# calls the API directly through a root helper.
+# uses the same system setting through macOS administrator authorization.
 #
 # USAGE (run on the MacBook, not the Mac mini — the mini has no lid):
 #   chmod +x lid.sh
@@ -11,9 +11,6 @@
 #   ./lid.sh off       # restore normal sleep (RUN THIS WHEN DONE!)
 #   ./lid.sh status
 #   ./lid.sh toggle
-#
-# SAFETY: needs sudo. While ON with the lid closed on battery the machine gets
-# HOT and drains fast — keep it plugged in and ventilated. Reboot resets it.
 
 set -euo pipefail
 
@@ -25,9 +22,6 @@ get_state() {
   fi
 }
 
-batt() { pmset -g batt 2>/dev/null | grep -oE '[0-9]+%' | head -1 || echo "?"; }
-power_source() { pmset -g batt 2>/dev/null | grep -qi "AC Power" && echo "AC" || echo "Battery"; }
-
 show_status() {
   local s; s=$(get_state)
   if [ "$s" = "on" ]; then
@@ -35,7 +29,6 @@ show_status() {
   else
     echo "⚪️ Lid OFF — normal sleep on lid close."
   fi
-  echo "   Source: $(power_source) | Battery: $(batt)"
 }
 
 turn_on() {

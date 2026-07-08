@@ -1,9 +1,7 @@
 #!/bin/bash
-# Collect a compact local diagnostic snapshot for helper/XPC/sleep issues.
+# Collect a compact local diagnostic snapshot for Lid sleep-state issues.
 set -euo pipefail
 
-APP_LABEL="${1:-top.qiyuey.lid}"
-HELPER_LABEL="${APP_LABEL}.helper"
 LOG_WINDOW="${LID_LOG_WINDOW:-2h}"
 
 section() {
@@ -15,9 +13,6 @@ sw_vers
 
 section "power"
 /usr/bin/pmset -g 2>&1 || true
-
-section "helper launchd state"
-/bin/launchctl print "system/$HELPER_LABEL" 2>&1 || true
 
 section "lid logs ($LOG_WINDOW)"
 /usr/bin/log show \

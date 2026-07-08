@@ -120,7 +120,7 @@ jobs:
           NOTES="build/self-signed/release-notes-$VERSION.md"
           mkdir -p "$(dirname "$NOTES")"
           {
-            echo "Lid helps your Mac keep working with the lid closed, so long-running agent sessions, builds, downloads, and remote connections can continue while the MacBook is tucked away."
+            echo "Lid is a lightweight, modern menu-bar app that keeps your Mac working with the lid closed, so long-running agent sessions, builds, downloads, and remote connections can continue while the MacBook is tucked away."
             echo
             echo "## What's New"
             echo
