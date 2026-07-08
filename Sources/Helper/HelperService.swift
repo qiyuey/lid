@@ -28,10 +28,16 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
     private let stateURL: URL
     private let stateLoadError: String?
     private var controlState: HelperSleepState
+    private var watchdogTimer: DispatchSourceTimer?
 
     private enum Verification {
         static let attempts = 5
         static let retryDelay: TimeInterval = 0.1
+    }
+
+    private enum Watchdog {
+        static let interval: DispatchTimeInterval = .seconds(60)
+        static let leeway: DispatchTimeInterval = .seconds(5)
     }
 
     init(helperLabel: String = LidHelperIdentity.fallbackLabel) {
@@ -46,7 +52,9 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
         }
         logger.info("Helper service initialized")
         queue.async { [weak self] in
-            self?.applyPersistedSleepState()
+            guard let self else { return }
+            self.applyPersistedSleepState(reason: "startup")
+            self.startWatchdog()
         }
     }
 
@@ -79,7 +87,9 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
     func getState(withReply reply: @escaping @Sendable (Bool) -> Void) {
         queue.async {
             // The helper-owned persisted state is the authority. External
-            // `pmset` changes are intentionally not synced back into Lid state.
+            // `pmset` changes are not synced back into Lid state; if they drift
+            // away from the persisted preference, re-apply the persisted value.
+            self.verifyPersistedSleepState(reason: "state read")
             reply(self.controlState.sleepPreventionEnabled)
         }
     }
@@ -122,21 +132,42 @@ final class HelperService: NSObject, LidHelperProtocol, @unchecked Sendable {
         return (false, "pmset reported success, but SleepDisabled is \(actual) after requesting \(requested)")
     }
 
-    private func applyPersistedSleepState() {
+    private func applyPersistedSleepState(reason: String) {
         let target = controlState.sleepPreventionEnabled
         let result = runPmset(disableSleep: target)
         if result.ok {
-            logger.info("Applied persisted SleepDisabled \(target, privacy: .public)")
+            logger.info("Applied persisted SleepDisabled \(target, privacy: .public) during \(reason, privacy: .public)")
             return
         }
 
-        logger.error("Failed to apply persisted SleepDisabled \(target, privacy: .public): \(result.error ?? "unknown", privacy: .public)")
-        if controlState.sleepPreventionEnabled {
-            controlState.sleepPreventionEnabled = false
-            if let persistError = persistControlState() {
-                logger.error("Failed to persist startup fallback state: \(persistError, privacy: .public)")
-            }
+        logger.error("Failed to apply persisted SleepDisabled \(target, privacy: .public) during \(reason, privacy: .public): \(result.error ?? "unknown", privacy: .public)")
+    }
+
+    private func startWatchdog() {
+        guard watchdogTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + Watchdog.interval,
+                       repeating: Watchdog.interval,
+                       leeway: Watchdog.leeway)
+        timer.setEventHandler { [weak self] in
+            self?.verifyPersistedSleepState()
         }
+        watchdogTimer = timer
+        timer.resume()
+        logger.info("Started SleepDisabled watchdog")
+    }
+
+    private func verifyPersistedSleepState(reason: String = "watchdog") {
+        let target = controlState.sleepPreventionEnabled
+        guard let actual = Self.currentSleepDisabled() else {
+            logger.error("SleepDisabled verification could not read pmset state during \(reason, privacy: .public)")
+            return
+        }
+
+        guard actual != target else { return }
+
+        logger.error("SleepDisabled verification found mismatch during \(reason, privacy: .public): persisted \(target, privacy: .public), actual \(actual, privacy: .public)")
+        applyPersistedSleepState(reason: reason)
     }
 
     private func persistControlState() -> String? {
