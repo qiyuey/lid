@@ -10,9 +10,8 @@ final class HelperManager {
     private var connection: NSXPCConnection?
     private let logger = Logger(subsystem: "top.qiyuey.lid", category: "helper-manager")
     private enum Timing {
-        static let reregisterSettleDelay: UInt64 = 500_000_000
         static let defaultXPCTimeout: TimeInterval = 6
-        static let reachabilityTimeout: TimeInterval = 5
+        static let reachabilityTimeout: TimeInterval = 1.5
     }
 
     /// Helper label / Mach service name, derived from this app's bundle id so the
@@ -47,36 +46,6 @@ final class HelperManager {
             let message = error?.localizedDescription
             Task { @MainActor in
                 completion(message)
-            }
-        }
-    }
-
-    /// Rebuild the registration from scratch so launchd picks up the current
-    /// helper binary and launch constraints. A plain re-`register()` does not
-    /// reliably clear stale records — only a full unregister followed by a fresh
-    /// register does.
-    ///
-    /// `unregister` is asynchronous, so we register from its completion (a
-    /// register issued immediately after fails with the unregister still settling).
-    /// `completion` is delivered on the main queue with any registration error.
-    func reregister(completion: @escaping @MainActor @Sendable (String?) -> Void) {
-        let svc = service
-        connection?.invalidate()
-        connection = nil
-        svc.unregister { [weak self] _ in
-            // Give launchd/BTM a moment to drop the old job before re-adding it.
-            Task { @MainActor in
-                guard let self else {
-                    completion(nil)
-                    return
-                }
-                try? await Task.sleep(nanoseconds: Timing.reregisterSettleDelay)
-                do {
-                    try self.service.register()
-                    completion(nil)
-                } catch {
-                    completion(error.localizedDescription)
-                }
             }
         }
     }
@@ -173,8 +142,8 @@ final class HelperManager {
 
     /// Run a single XPC call, guaranteeing `completion` fires exactly once on the
     /// main queue. If the daemon never replies — e.g. it fails to launch after an
-    /// repair, so neither the reply nor the connection's error handler ever fires
-    /// — a timeout reports failure instead of leaving the UI hung and silent.
+    /// app update, so neither the reply nor the connection's error handler ever
+    /// fires — a timeout reports failure instead of leaving the UI hung and silent.
     private func callWithTimeout(timeout: TimeInterval = Timing.defaultXPCTimeout,
                                  completion: @escaping @MainActor @Sendable (Bool, String?) -> Void,
                                  _ body: (LidHelperProtocol, @escaping @Sendable (Bool, String?) -> Void) -> Void) {

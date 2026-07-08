@@ -136,13 +136,13 @@ private struct HelperAttentionNotice: View {
             return text.open
         }
         if state.helperInstalled {
-            return text.repair
+            return text.open
         }
         return text.install
     }
 
     private func performAction() {
-        if state.helperNeedsApproval {
+        if state.helperNeedsApproval || state.helperInstalled {
             state.openLoginItems()
         } else {
             state.installHelper()
@@ -320,9 +320,6 @@ private struct HelperRow: View {
         LiquidGlassRow(title: text.helperTitle, trailingWidth: nil) {
             HStack(spacing: 8) {
                 primaryAction
-                if showsRemoveAction {
-                    removeButton
-                }
             }
         }
     }
@@ -333,17 +330,9 @@ private struct HelperRow: View {
         if state.usingHelper {
             removeButton
         } else if state.helperNeedsApproval {
-            Button(text.open) {
-                state.openLoginItems()
-            }
-            .buttonStyle(.glassProminent)
-            .help(text.onboardingOpenLoginItems)
+            removeButton
         } else if state.helperInstalled {
-            Button(text.repair) {
-                state.installHelper()
-            }
-            .buttonStyle(.glassProminent)
-            .help(text.helperUnavailableBody)
+            removeButton
         } else {
             Button(text.install) {
                 state.installHelper()
@@ -358,10 +347,6 @@ private struct HelperRow: View {
             state.uninstallHelper()
         }
         .help(state.text.removeHelperTitle)
-    }
-
-    private var showsRemoveAction: Bool {
-        !state.usingHelper && (state.helperInstalled || state.helperNeedsApproval)
     }
 }
 

@@ -13,7 +13,6 @@ public struct SettingsStore {
         static let autoOff      = "autoOffMinutes"
         static let language     = "languagePreference"
         static let onboarded    = "onboardingComplete"
-        static let helperRegistrationFingerprint = "lastRegisteredHelperRegistrationFingerprint"
     }
 
     public init(defaults: UserDefaults = .standard) {
@@ -61,19 +60,5 @@ public struct SettingsStore {
 
     public func saveOnboardingComplete(_ complete: Bool) {
         defaults.set(complete, forKey: Key.onboarded)
-    }
-
-    /// The app/helper registration fingerprint that was last verified usable.
-    /// Empty until the first successful registration.
-    public func loadLastHelperRegistrationFingerprint() -> String {
-        defaults.string(forKey: Key.helperRegistrationFingerprint) ?? ""
-    }
-
-    public func saveLastHelperRegistrationFingerprint(_ fingerprint: String) {
-        defaults.set(fingerprint, forKey: Key.helperRegistrationFingerprint)
-    }
-
-    public func clearLastHelperRegistrationFingerprint() {
-        defaults.removeObject(forKey: Key.helperRegistrationFingerprint)
     }
 }

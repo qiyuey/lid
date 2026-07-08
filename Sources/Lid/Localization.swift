@@ -51,7 +51,6 @@ struct AppStrings: Sendable {
     var skip: String { pick("Skip", "跳过") }
     var open: String { pick("Open", "打开") }
     var install: String { pick("Install", "安装") }
-    var repair: String { pick("Repair", "修复") }
     var remove: String { pick("Remove", "移除") }
     var check: String { pick("Check", "检查") }
     var done: String { pick("Done", "完成") }
@@ -90,7 +89,7 @@ struct AppStrings: Sendable {
     var helperUnavailableTitle: String { pick("Helper unavailable", "Helper 不可用") }
     var helperRequiredBody: String { pick("Install and approve the helper before using lid sleep prevention.", "安装并批准 Helper 后，才能使用合盖防睡眠。") }
     var helperApprovalRequiredBody: String { pick("Open Login Items and allow Lid's background helper.", "打开登录项并允许 Lid 的后台 Helper。") }
-    var helperUnavailableBody: String { pick("Repair the helper registration, then try the switch again.", "修复 Helper 注册后，再尝试开关。") }
+    var helperUnavailableBody: String { pick("Check that Lid is enabled in System Settings > Login Items. If it still doesn’t respond, remove the helper and install it again.", "请检查系统设置 > 登录项中是否已启用 Lid。若仍无响应，请移除 Helper 后重新安装。") }
     var turnOffAfterTitle: String { pick("Turn off after", "自动关闭") }
     var turningOffInTitle: String { pick("Turning off in", "剩余时间") }
     var checkAutomaticallyTitle: String { pick("Check automatically", "自动检查") }
@@ -133,7 +132,7 @@ struct AppStrings: Sendable {
     var approveHelperPrompt: String { pick("Approve Lid in System Settings > Login Items.", "请在系统设置 > 登录项中批准 Lid。") }
     var approveHelperThenTry: String { pick("Approve Lid in System Settings > Login Items, then try the switch again.", "请在系统设置 > 登录项中批准 Lid，然后再次尝试开关。") }
     var helperRemovedMessage: String { pick("Background helper removed. Install it again before using lid sleep prevention.", "后台 Helper 已移除。使用合盖防睡眠前，请重新安装 Helper。") }
-    var helperNoResponse: String { pick("The background helper didn’t respond.", "后台 Helper 没有响应。") }
+    var helperNoResponse: String { pick("The background helper didn’t respond. Check System Settings > Login Items, or remove and install the helper again.", "后台 Helper 没有响应。请检查系统设置 > 登录项，或移除后重新安装 Helper。") }
     func helperStateMismatch(target: Bool) -> String {
         target
             ? pick("The background helper reported success, but SleepDisabled is still off.", "后台 Helper 返回成功，但 SleepDisabled 仍未开启。")
@@ -150,8 +149,8 @@ struct AppStrings: Sendable {
              "Lid 无法恢复正常睡眠，因此保留了后台 Helper。\n\n\(message)")
     }
     func helperFailureText(_ message: String) -> String {
-        pick("\(message)\n\nOpen Login Items, allow Lid's background helper, then try again.",
-             "\(message)\n\n请打开登录项，允许 Lid 的后台 Helper，然后再次尝试。")
+        pick("\(message)\n\nOpen Login Items and make sure Lid's background helper is enabled. If it still doesn’t respond, remove the helper and install it again.",
+             "\(message)\n\n请打开登录项，确认 Lid 的后台 Helper 已启用。若仍无响应，请移除 Helper 后重新安装。")
     }
 
     func toggleFailedTitle(target: Bool) -> String {

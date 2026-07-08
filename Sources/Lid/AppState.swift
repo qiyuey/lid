@@ -50,7 +50,7 @@ final class AppState: ObservableObject {
     private let loginItem = LoginItemManager()
     private lazy var safety = SafetyMonitor(battery: battery)
     private lazy var autoOff = AutoOffController(store: store)
-    private lazy var helperLifecycle = HelperLifecycleController(helper: helper, store: store)
+    private lazy var helperLifecycle = HelperLifecycleController(helper: helper)
     private lazy var onboarding = OnboardingController(state: self)
 
     /// Marketing version shown in the menu.
@@ -80,7 +80,6 @@ final class AppState: ObservableObject {
     private var helperApprovalPollTimer: Timer?
     private var helperApprovalPollDeadline: Date?
     private var helperRecheckInProgress = false
-    private var helperRepairInProgress = false
     private var stateChangeRequestID = 0
 
     private enum Timing {
@@ -103,9 +102,7 @@ final class AppState: ObservableObject {
         refreshHelperStatus()
         helperLifecycle.captureUsableBaseline()
         refreshState()
-        if !refreshHelperRegistrationIfNeeded() {
-            refreshHelperUsability(refreshStateWhenUsable: true)
-        }
+        refreshHelperUsability(refreshStateWhenUsable: true)
         refreshBattery()
         battery.start { [weak self] info in
             Task { @MainActor in
@@ -229,17 +226,6 @@ final class AppState: ObservableObject {
         syncHelperStatus()
     }
 
-    /// If the app bundle/helper bits changed since the current daemon was
-    /// registered, rebuild the SMAppService registration from this app bundle.
-    /// This keeps Homebrew, manual DMG installs, and local self-signed installs
-    /// compatible even when they replace the same bundle id in place.
-    @discardableResult
-    private func refreshHelperRegistrationIfNeeded() -> Bool {
-        helperLifecycle.refreshRegistrationIfNeeded { [weak self] in
-            self?.repairHelperRegistration(userInitiated: false)
-        }
-    }
-
     /// Re-read helper status; if it just became usable (the user approved it while
     /// the app was running), pick up its keep-awake state without interrupting the
     /// current flow.
@@ -251,7 +237,10 @@ final class AppState: ObservableObject {
             return
         }
         helperRecheckInProgress = true
-        helperLifecycle.recheckBecameUsable { [weak self] becameUsable in
+        helperLifecycle.recheckBecameUsable(
+            maxAttempts: Timing.helperReadinessAttempts,
+            retryDelay: Timing.helperReadinessRetryDelay
+        ) { [weak self] becameUsable in
             guard let self else { return }
             self.helperRecheckInProgress = false
             self.syncHelperStatus()
@@ -269,9 +258,6 @@ final class AppState: ObservableObject {
                 }
                 self.stopHelperApprovalPolling()
                 if self.helperInstalled, !self.helperNeedsApproval {
-                    if self.refreshHelperRegistrationIfNeeded() {
-                        return
-                    }
                     self.markHelperUnavailableForUserAction()
                 }
             }
@@ -279,9 +265,8 @@ final class AppState: ObservableObject {
     }
 
     func installHelper() {
-        // If the daemon is already registered and just awaiting approval, don't
-        // re-register (that throws once pending and would swallow the open) —
-        // just take the user to Login Items.
+        // If the daemon is already installed or just awaiting approval, don't
+        // run another install attempt. Take the user to Login Items instead.
         refreshHelperStatus()
         if helperLifecycle.needsApproval {
             openLoginItems()
@@ -291,11 +276,15 @@ final class AppState: ObservableObject {
             if helperLifecycle.usingHelper {
                 lastError = nil
             } else {
-                repairHelperRegistration(userInitiated: true)
+                lastError = helperUnavailableText
+                openLoginItems()
             }
             return
         }
-        helperLifecycle.register(maxAttempts: 1, retryDelay: 0) { [weak self] becameUsable, errorMessage in
+        helperLifecycle.register(
+            maxAttempts: Timing.helperReadinessAttempts,
+            retryDelay: Timing.helperReadinessRetryDelay
+        ) { [weak self] becameUsable, errorMessage in
             guard let self else { return }
             syncHelperStatus()
             if helperLifecycle.needsApproval {
@@ -314,21 +303,27 @@ final class AppState: ObservableObject {
             if becameUsable {
                 refreshState()
             } else {
-                lastError = text.approveHelperPrompt
-                helper.openLoginItemsSettings()
-                startHelperApprovalPolling()
+                markHelperUnavailableForUserAction()
             }
         }
     }
 
     /// Open System Settings ▸ Login Items so the user can approve the helper.
-    /// Kept separate from `installHelper()` so re-registration can never swallow
-    /// the open.
+    /// Kept separate from `installHelper()` so opening Settings never depends on
+    /// a helper installation attempt.
     func openLoginItems() {
-        lastError = text.approveHelperPrompt
-        helper.openLoginItemsSettings()
         refreshHelperStatus()
-        startHelperApprovalPolling()
+        if helperNeedsApproval {
+            lastError = text.approveHelperPrompt
+            startHelperApprovalPolling()
+        } else if helperInstalled, !usingHelper {
+            lastError = helperUnavailableText
+            stopHelperApprovalPolling()
+        } else {
+            lastError = nil
+            stopHelperApprovalPolling()
+        }
+        helper.openLoginItemsSettings()
     }
 
     func uninstallHelper() {
@@ -498,50 +493,8 @@ final class AppState: ObservableObject {
             }
             self.stopHelperApprovalPolling()
             if self.helperInstalled, !self.helperNeedsApproval {
-                if self.refreshHelperRegistrationIfNeeded() {
-                    return
-                }
                 self.markHelperUnavailableForUserAction()
             }
-        }
-    }
-
-    private func repairHelperRegistration(userInitiated: Bool) {
-        guard !helperRepairInProgress else { return }
-        helperRepairInProgress = true
-        stopHelperApprovalPolling()
-
-        helperLifecycle.repair { [weak self] errorMessage in
-            guard let self else { return }
-            self.helperRepairInProgress = false
-            self.syncHelperStatus()
-
-            if self.helperNeedsApproval {
-                self.lastError = self.text.approveHelperPrompt
-                if userInitiated {
-                    self.helper.openLoginItemsSettings()
-                }
-                self.startHelperApprovalPolling()
-                return
-            }
-
-            if let errorMessage {
-                self.markHelperUnavailableForUserAction(message: errorMessage)
-                if userInitiated {
-                    self.alerts.presentHelperFailure(message: errorMessage) { [weak self] in
-                        self?.openLoginItems()
-                    }
-                }
-                return
-            }
-
-            guard self.usingHelper else {
-                self.markHelperUnavailableForUserAction()
-                return
-            }
-
-            self.lastError = nil
-            self.refreshState()
         }
     }
 

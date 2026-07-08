@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 @MainActor
 protocol HelperManaging: AnyObject {
@@ -8,34 +7,25 @@ protocol HelperManaging: AnyObject {
 
     func register() throws
     func unregister(completion: @escaping @MainActor @Sendable (String?) -> Void)
-    func reregister(completion: @escaping @MainActor @Sendable (String?) -> Void)
     func checkReachable(completion: @escaping @MainActor @Sendable (Bool) -> Void)
 }
 
 @MainActor
 final class HelperLifecycleController {
     private let helper: HelperManaging
-    private let store: SettingsStore
-    private let registrationFingerprint: @MainActor () -> String
     private var usableBaseline = false
 
     private enum Timing {
         static let registrationReachabilityAttempts = 8
         static let registrationReachabilityRetryDelay: TimeInterval = 2
-        static let statusReachabilityAttempts = 2
-        static let statusReachabilityRetryDelay: TimeInterval = 1
     }
 
     private(set) var installed = false
     private(set) var needsApproval = false
     private(set) var usingHelper = false
 
-    init(helper: HelperManaging,
-         store: SettingsStore,
-         registrationFingerprint: @escaping @MainActor () -> String = HelperLifecycleController.defaultRegistrationFingerprint) {
+    init(helper: HelperManaging) {
         self.helper = helper
-        self.store = store
-        self.registrationFingerprint = registrationFingerprint
     }
 
     func refreshStatus() {
@@ -83,7 +73,6 @@ final class HelperLifecycleController {
             self.refreshStatus()
             self.usingHelper = self.installed && !self.needsApproval && reachable
             if self.usingHelper {
-                self.storeCurrentHelperRegistrationFingerprint()
                 completion(true)
             } else if attemptsRemaining > 1, self.installed, !self.needsApproval {
                 self.retryRefreshUsability(
@@ -92,7 +81,6 @@ final class HelperLifecycleController {
                     completion: completion
                 )
             } else {
-                self.clearStoredHelperRegistrationFingerprint()
                 completion(false)
             }
         }
@@ -121,51 +109,11 @@ final class HelperLifecycleController {
         }
     }
 
-    @discardableResult
-    func refreshRegistrationIfNeeded(
-        maxAttempts: Int = Timing.statusReachabilityAttempts,
-        retryDelay: TimeInterval = Timing.statusReachabilityRetryDelay,
-        onRepairNeeded: @escaping @MainActor @Sendable () -> Void
-    ) -> Bool {
-        let fingerprint = helperRegistrationFingerprint()
-        guard store.loadLastHelperRegistrationFingerprint() != fingerprint else { return false }
-        refreshStatus()
-        guard installed, !needsApproval else { return false }
-        onRepairNeeded()
-        return true
-    }
-
-    private static func fileSHA256(_ url: URL) -> String? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return SHA256.hash(data: data)
-            .map { String(format: "%02X", $0) }
-            .joined()
-    }
-
-    private static func bundledHelperExecutableHash(bundle: Bundle) -> String? {
-        let helperURL = bundle.bundleURL
-            .appendingPathComponent("Contents/MacOS/LidHelper")
-        return fileSHA256(helperURL)
-    }
-
-    private static func bundledLaunchDaemonPlistURL(bundle: Bundle) -> URL? {
-        guard let appBundleID = bundle.bundleIdentifier else { return nil }
-        let helperLabel = LidHelperIdentity.label(appBundleID: appBundleID)
-        return bundle.bundleURL
-            .appendingPathComponent("Contents/Library/LaunchDaemons")
-            .appendingPathComponent("\(helperLabel).plist")
-    }
-
-    private static func bundledLaunchDaemonPlistHash(bundle: Bundle) -> String? {
-        guard let plistURL = bundledLaunchDaemonPlistURL(bundle: bundle) else {
-            return nil
-        }
-        return fileSHA256(plistURL)
-    }
-
-    func recheckBecameUsable(completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+    func recheckBecameUsable(maxAttempts: Int = 1,
+                             retryDelay: TimeInterval = 1,
+                             completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         let wasUsable = usableBaseline
-        refreshUsability { [weak self] usable in
+        refreshUsability(maxAttempts: maxAttempts, retryDelay: retryDelay) { [weak self] usable in
             guard let self else {
                 completion(false)
                 return
@@ -211,88 +159,8 @@ final class HelperLifecycleController {
             self.refreshStatus()
             if errorMessage == nil {
                 self.usableBaseline = false
-                self.clearStoredHelperRegistrationFingerprint()
             }
             completion(errorMessage)
         }
-    }
-
-    func repair(maxAttempts: Int = Timing.registrationReachabilityAttempts,
-                retryDelay: TimeInterval = Timing.registrationReachabilityRetryDelay,
-                completion: @escaping @MainActor @Sendable (String?) -> Void) {
-        helper.reregister { [weak self] errorMessage in
-            guard let self else {
-                completion(errorMessage)
-                return
-            }
-            self.refreshStatus()
-            guard errorMessage == nil else {
-                if self.needsApproval {
-                    self.usableBaseline = false
-                    completion(nil)
-                } else {
-                    completion(errorMessage)
-                }
-                return
-            }
-
-            guard self.installed, !self.needsApproval else {
-                self.usableBaseline = false
-                completion(nil)
-                return
-            }
-
-            self.refreshUsability(maxAttempts: maxAttempts, retryDelay: retryDelay) { [weak self] usable in
-                guard let self else {
-                    completion(nil)
-                    return
-                }
-                self.usableBaseline = usable
-                if usable {
-                    completion(nil)
-                } else {
-                    completion("The background helper isn’t responding.")
-                }
-            }
-        }
-    }
-
-    func storeCurrentHelperRegistrationFingerprint() {
-        store.saveLastHelperRegistrationFingerprint(helperRegistrationFingerprint())
-    }
-
-    private func clearStoredHelperRegistrationFingerprint() {
-        store.clearLastHelperRegistrationFingerprint()
-    }
-
-    private func helperRegistrationFingerprint() -> String {
-        registrationFingerprint()
-    }
-
-    private static func defaultRegistrationFingerprint() -> String {
-        defaultRegistrationFingerprint(bundle: .main)
-    }
-
-    private static func defaultRegistrationFingerprint(bundle: Bundle) -> String {
-        let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
-        let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
-        let certificateSHA1 = bundledHelperEnvironmentValue(
-            LidHelperIdentity.allowedClientCertificateSHA1EnvKey,
-            bundle: bundle
-        ) ?? "none"
-        let helperHash = bundledHelperExecutableHash(bundle: bundle) ?? "none"
-        let plistHash = bundledLaunchDaemonPlistHash(bundle: bundle) ?? "none"
-        return "version-\(version)|build-\(build)|cert-\(certificateSHA1)|helper-\(helperHash)|plist-\(plistHash)"
-    }
-
-    private static func bundledHelperEnvironmentValue(_ key: String, bundle: Bundle) -> String? {
-        guard let plistURL = bundledLaunchDaemonPlistURL(bundle: bundle) else { return nil }
-        guard let plist = NSDictionary(contentsOf: plistURL),
-              let environment = plist["EnvironmentVariables"] as? [String: String],
-              let value = environment[key],
-              !value.isEmpty else {
-            return nil
-        }
-        return value
     }
 }
