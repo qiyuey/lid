@@ -74,6 +74,7 @@ struct AppStrings: Sendable {
     var setupGuideTitle: String { pick("Setup Guide", "设置向导") }
     var checkAutomaticallyTitle: String { pick("Check automatically", "自动检查") }
     var checkNowTitle: String { pick("Check now", "立即检查") }
+    var authorizeAgainTitle: String { pick("Authorize Again", "重新授权") }
 
     // MARK: Onboarding
 
@@ -128,8 +129,8 @@ struct AppStrings: Sendable {
     }
 
     func powerAuthorizationFailed(_ details: String) -> String {
-        pick("macOS did not authorize the power setting change. Try the switch again and approve the administrator prompt.\n\n\(details)",
-             "macOS 未授权这次电源设置更改。请再次尝试开关，并批准管理员提示。\n\n\(details)")
+        pick("macOS did not authorize the power setting change. Click Authorize Again and approve the administrator prompt.\n\n\(details)",
+             "macOS 未授权这次电源设置更改。请点“重新授权”，并批准管理员提示。\n\n\(details)")
     }
 
     func toggleFailedTitle(target: Bool) -> String {

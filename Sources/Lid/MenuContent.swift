@@ -50,6 +50,18 @@ private struct CoreSection: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 6)
+
+                if state.canRetryPowerAuthorization {
+                    Button {
+                        state.retryPowerAuthorization()
+                    } label: {
+                        Label(text.authorizeAgainTitle, systemImage: "lock.open")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .disabled(state.isChanging)
+                    .padding(.top, 4)
+                }
             }
         }
     }

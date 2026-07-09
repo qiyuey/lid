@@ -20,10 +20,12 @@ final class LocalizationTests: XCTestCase {
         XCTAssertTrue(englishText.onboardingPersistenceBullet.contains("macOS power settings"))
         XCTAssertFalse(englishText.onboardingDoneBody.contains("background process"))
         XCTAssertFalse(englishText.powerAuthorizationFailed("details").contains("background process"))
+        XCTAssertTrue(englishText.powerAuthorizationFailed("details").contains(englishText.authorizeAgainTitle))
 
         XCTAssertTrue(chineseText.onboardingAuthorizationBullet.contains("管理员授权"))
         XCTAssertTrue(chineseText.onboardingPersistenceBullet.contains("macOS 电源设置"))
         XCTAssertFalse(chineseText.onboardingDoneBody.contains("后台进程"))
         XCTAssertFalse(chineseText.powerAuthorizationFailed("details").contains("后台进程"))
+        XCTAssertTrue(chineseText.powerAuthorizationFailed("details").contains(chineseText.authorizeAgainTitle))
     }
 }

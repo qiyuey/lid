@@ -42,6 +42,7 @@ final class AppState: ObservableObject {
 
     private var stateRefreshTimer: Timer?
     private var stateChangeRequestID = 0
+    @Published private var authorizationRetryTarget: Bool?
     private var desiredSleepPreventionEnabled: Bool?
     private var lastAutomaticRestoreAttempt: Date?
     private var didBecomeActiveObserver: NSObjectProtocol?
@@ -163,6 +164,7 @@ final class AppState: ObservableObject {
 
                 self.applyObservedEnabledState(actual)
                 guard actual == target else {
+                    self.authorizationRetryTarget = target
                     let message = self.text.sleepStateMismatch(target: target, actual: actual)
                     self.lastError = message
                     if userInitiated {
@@ -174,6 +176,7 @@ final class AppState: ObservableObject {
                 }
 
                 self.lastError = nil
+                self.authorizationRetryTarget = nil
                 self.rememberDesiredSleepPreventionState(target)
                 self.finishStateChange(requestID)
                 completion?(true)
@@ -182,6 +185,7 @@ final class AppState: ObservableObject {
                 if let observed = try? await self.power.isSleepPreventionEnabledAsync() {
                     self.applyObservedEnabledState(observed)
                 }
+                self.authorizationRetryTarget = target
                 let message = self.userMessage(for: error, target: target)
                 self.lastError = message
                 self.logger.error("Set SleepDisabled failed: \(error.localizedDescription, privacy: .public)")
@@ -206,6 +210,15 @@ final class AppState: ObservableObject {
         refreshState()
     }
 
+    var canRetryPowerAuthorization: Bool {
+        authorizationRetryTarget != nil
+    }
+
+    func retryPowerAuthorization() {
+        guard let target = authorizationRetryTarget else { return }
+        setEnabled(target, userInitiated: true)
+    }
+
     private func beginStateChange() -> Int {
         stateChangeRequestID += 1
         isChanging = true
@@ -228,6 +241,7 @@ final class AppState: ObservableObject {
         }
         if desiredSleepPreventionEnabled == value {
             lastAutomaticRestoreAttempt = nil
+            authorizationRetryTarget = nil
         }
     }
 
