@@ -1,12 +1,12 @@
 # Vendored Sparkle CLI tools
 
-These are the official Sparkle **2.9.3** command-line binaries, committed so the
+These are the official Sparkle **2.9.4** command-line binaries, committed so the
 self-signed release workflow is self-contained and deterministic. It never has
 to hunt for the tools in DerivedData or rely on Homebrew.
 
-Source: <https://github.com/sparkle-project/Sparkle/releases/tag/2.9.3>
-(`Sparkle-2.9.3.tar.xz` → `bin/`). Keep this version in step with the
-Sparkle SPM package pinned in `project.yml`.
+Source: <https://github.com/sparkle-project/Sparkle/releases/tag/2.9.4>
+(`Sparkle-2.9.4.tar.xz` → `bin/`). Keep this version in step with the
+Sparkle SPM version declared in `project.yml`.
 
 | Tool | Used for |
 | --- | --- |

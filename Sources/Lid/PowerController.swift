@@ -1,5 +1,15 @@
 import Foundation
 
+protocol ProcessRunning: Sendable {
+    func run(_ path: String, _ arguments: [String], timeout: TimeInterval) -> ProcessRunResult
+}
+
+struct SystemProcessRunner: ProcessRunning {
+    func run(_ path: String, _ arguments: [String], timeout: TimeInterval) -> ProcessRunResult {
+        ProcessRunner.run(path, arguments, timeout: timeout)
+    }
+}
+
 enum PowerControllerError: Error, Equatable, Sendable {
     case readFailed(String)
     case commandFailed(String)
@@ -18,16 +28,25 @@ enum PowerControllerError: Error, Equatable, Sendable {
 }
 
 struct PowerController: Sendable {
+    private let runner: any ProcessRunning
+
+    init(runner: any ProcessRunning = SystemProcessRunner()) {
+        self.runner = runner
+    }
+
     func isSleepPreventionEnabled() throws -> Bool {
-        let result = ProcessRunner.run("/usr/bin/pmset", ["-g"], timeout: 5)
+        let result = runner.run("/usr/bin/pmset", ["-g"], timeout: 5)
         guard result.succeeded else {
             throw PowerControllerError.readFailed(Self.describe(result))
         }
-        return PowerParsers.isSleepDisabled(pmsetG: result.stdout)
+        guard let enabled = PowerParsers.sleepDisabledValue(pmsetG: result.stdout) else {
+            throw PowerControllerError.readFailed("Could not read a valid SleepDisabled value from pmset.")
+        }
+        return enabled
     }
 
     func setSleepPrevention(_ enabled: Bool) throws {
-        let result = ProcessRunner.run(
+        let result = runner.run(
             "/usr/bin/osascript",
             ["-e", Self.adminScript(enabled: enabled)],
             timeout: 120

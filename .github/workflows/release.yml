@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: lid-release
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Build and publish self-signed release
@@ -21,7 +25,7 @@ jobs:
       LID_SELF_SIGNED_CERT_CN: Lid Local Self-Signed Code Signing
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -189,6 +193,7 @@ jobs:
           TAP_DIR="$RUNNER_TEMP/homebrew-tap"
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/qiyuey/homebrew-tap.git" "$TAP_DIR"
           SHA256="$(shasum -a 256 "$DMG" | awk '{print $1}')"
+          echo "DMG_SHA256=$SHA256" >> "$GITHUB_ENV"
           .agents/skills/lid-release/scripts/render-homebrew-cask.sh \
             --version "$VERSION" \
             --sha256 "$SHA256" \
@@ -204,3 +209,30 @@ jobs:
             git commit -m "cask(lid): update to $VERSION"
             git push
           fi
+
+      - name: Verify published release consistency
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ASSET_NAME="Lid-$VERSION-self-signed.dmg"
+          LOCAL_SIZE="$(stat -f %z "$DMG")"
+          REMOTE_SIZE="$(gh release view "$TAG" --json assets --jq ".assets[] | select(.name == \"$ASSET_NAME\") | .size")"
+          test -n "$REMOTE_SIZE"
+          test "$REMOTE_SIZE" = "$LOCAL_SIZE"
+
+          grep -q "<sparkle:version>$VERSION</sparkle:version>" docs/appcast.xml
+          grep -q "https://github.com/qiyuey/lid/releases/latest/download/$ASSET_NAME" docs/appcast.xml
+          grep -Eq 'sparkle:edSignature="[^"]+"' docs/appcast.xml
+
+          CASK="$RUNNER_TEMP/homebrew-tap/Casks/lid.rb"
+          grep -q "version \"$VERSION\"" "$CASK"
+          grep -q "sha256 \"$DMG_SHA256\"" "$CASK"
+
+          {
+            echo "## Release consistency"
+            echo
+            echo "- GitHub Release: \`$ASSET_NAME\` ($REMOTE_SIZE bytes)"
+            echo "- Sparkle appcast: \`$VERSION\` with EdDSA signature"
+            echo "- Homebrew cask: \`$VERSION\` with DMG SHA-256 \`$DMG_SHA256\`"
+          } >> "$GITHUB_STEP_SUMMARY"
