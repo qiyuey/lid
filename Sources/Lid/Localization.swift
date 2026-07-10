@@ -102,6 +102,9 @@ struct AppStrings: Sendable {
 
     var turnOffFailedTitle: String { pick("Couldn’t turn lid sleep prevention off", "无法关闭合盖防睡眠") }
     var turnOnFailedTitle: String { pick("Couldn’t turn lid sleep prevention on", "无法开启合盖防睡眠") }
+    var sleepStateMismatchNotificationTitle: String {
+        pick("Lid state doesn’t match the expected setting", "Lid 状态不符合预期")
+    }
     func sleepStateMismatch(target: Bool, actual: Bool? = nil) -> String {
         switch (language, target, actual) {
         case (.english, true, .some(false)):

@@ -24,6 +24,7 @@ final class AppState: ObservableObject {
     private let power = PowerController()
     private let store = SettingsStore()
     private let loginItem = LoginItemManager()
+    private let sleepStateMismatchNotifier = SleepStateMismatchNotifier()
     private lazy var onboarding = OnboardingController(state: self)
     private let automaticRestoreRetryInterval: TimeInterval = 10 * 60
 
@@ -167,6 +168,7 @@ final class AppState: ObservableObject {
                     self.authorizationRetryTarget = target
                     let message = self.text.sleepStateMismatch(target: target, actual: actual)
                     self.lastError = message
+                    self.sleepStateMismatchNotifier.reportMismatch(target: target, text: self.text)
                     if userInitiated {
                         self.alerts.presentToggleFailure(target: target, message: message)
                     }
@@ -182,13 +184,19 @@ final class AppState: ObservableObject {
                 completion?(true)
             } catch {
                 guard self.isCurrentStateChange(requestID) else { return }
-                if let observed = try? await self.power.isSleepPreventionEnabledAsync() {
+                let observed = try? await self.power.isSleepPreventionEnabledAsync()
+                if let observed {
                     self.applyObservedEnabledState(observed)
                 }
                 self.authorizationRetryTarget = target
                 let message = self.userMessage(for: error, target: target)
                 self.lastError = message
                 self.logger.error("Set SleepDisabled failed: \(error.localizedDescription, privacy: .public)")
+                if case PowerControllerError.verificationFailed = error,
+                   let observed,
+                   observed != target {
+                    self.sleepStateMismatchNotifier.reportMismatch(target: target, text: self.text)
+                }
                 if userInitiated {
                     self.alerts.presentToggleFailure(target: target, message: message)
                 }
@@ -242,6 +250,7 @@ final class AppState: ObservableObject {
         if desiredSleepPreventionEnabled == value {
             lastAutomaticRestoreAttempt = nil
             authorizationRetryTarget = nil
+            sleepStateMismatchNotifier.resolveMismatch()
         }
     }
 
