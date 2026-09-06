@@ -1,1 +1,0 @@
-../../.agents/skills/lid-release/SKILL.md
