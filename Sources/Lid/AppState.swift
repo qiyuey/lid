@@ -43,6 +43,7 @@ final class AppState: ObservableObject {
 
     private var stateRefreshTimer: Timer?
     private var stateChangeRequestID = 0
+    private var stateReadGeneration = StateReadGeneration()
     @Published private var authorizationRetryTarget: Bool?
     private var desiredSleepPreventionEnabled: Bool?
     private var lastAutomaticRestoreAttempt: Date?
@@ -134,14 +135,17 @@ final class AppState: ObservableObject {
 
     func refreshState() {
         guard !isChanging else { return }
+        let readID = stateReadGeneration.beginRead()
         Task { @MainActor [weak self] in
             guard let self else { return }
+            guard self.stateReadGeneration.isCurrent(readID) else { return }
             do {
-                let enabled = try await self.power.isSleepPreventionEnabledAsync()
-                guard !self.isChanging else { return }
+                let enabled = try await self.power.isSleepPreventionEnabled()
+                guard self.stateReadGeneration.isCurrent(readID) else { return }
                 self.applyObservedEnabledState(enabled)
                 self.restoreObservedStateIfNeeded(enabled)
             } catch {
+                guard self.stateReadGeneration.isCurrent(readID) else { return }
                 self.lastError = self.text.powerReadFailed(self.powerErrorDetails(error))
                 self.logger.error("Refresh state failed: \(error.localizedDescription, privacy: .public)")
             }
@@ -159,8 +163,9 @@ final class AppState: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await self.power.setSleepPreventionAsync(target)
-                let actual = try await self.power.isSleepPreventionEnabledAsync()
+                try await self.power.setSleepPrevention(target)
+                guard self.isCurrentStateChange(requestID) else { return }
+                let actual = try await self.power.isSleepPreventionEnabled()
                 guard self.isCurrentStateChange(requestID) else { return }
 
                 self.applyObservedEnabledState(actual)
@@ -184,7 +189,8 @@ final class AppState: ObservableObject {
                 completion?(true)
             } catch {
                 guard self.isCurrentStateChange(requestID) else { return }
-                let observed = try? await self.power.isSleepPreventionEnabledAsync()
+                let observed = try? await self.power.isSleepPreventionEnabled()
+                guard self.isCurrentStateChange(requestID) else { return }
                 if let observed {
                     self.applyObservedEnabledState(observed)
                 }
@@ -228,6 +234,7 @@ final class AppState: ObservableObject {
     }
 
     private func beginStateChange() -> Int {
+        stateReadGeneration.invalidate()
         stateChangeRequestID += 1
         isChanging = true
         return stateChangeRequestID

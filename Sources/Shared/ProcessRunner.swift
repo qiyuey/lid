@@ -1,6 +1,6 @@
 import Foundation
 import OSLog
-import Darwin
+import Subprocess
 
 public struct ProcessRunResult: Equatable, Sendable {
     public let exitCode: Int32
@@ -13,94 +13,51 @@ public struct ProcessRunResult: Equatable, Sendable {
 
 public enum ProcessRunner {
     private static let logger = Logger(subsystem: "top.qiyuey.lid", category: "process")
+    private struct Timeout: Error {}
 
+    /// Cancellation propagates only after Subprocess has torn down and reaped
+    /// the child. A deadline is reported separately from caller cancellation.
     public static func run(_ path: String,
                            _ arguments: [String],
-                           timeout: TimeInterval = 10) -> ProcessRunResult {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: path)
-        proc.arguments = arguments
-
-        let stdout = Pipe()
-        let stderr = Pipe()
-        proc.standardOutput = stdout
-        proc.standardError = stderr
-
-        let finished = DispatchSemaphore(value: 0)
-        let outputGroup = DispatchGroup()
-        let stdoutData = LockedData()
-        let stderrData = LockedData()
-
-        outputGroup.enter()
-        DispatchQueue.global(qos: .utility).async {
-            stdoutData.store(stdout.fileHandleForReading.readDataToEndOfFile())
-            outputGroup.leave()
-        }
-        outputGroup.enter()
-        DispatchQueue.global(qos: .utility).async {
-            stderrData.store(stderr.fileHandleForReading.readDataToEndOfFile())
-            outputGroup.leave()
-        }
-
-        proc.terminationHandler = { _ in finished.signal() }
-
+                           timeout: TimeInterval = 10) async throws -> ProcessRunResult {
+        try Task.checkCancellation()
         do {
-            try proc.run()
-        } catch {
-            logger.error("Failed to launch \(path, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            return ProcessRunResult(exitCode: -1, stdout: "", stderr: error.localizedDescription, timedOut: false)
-        }
-
-        var timedOut = false
-        if finished.wait(timeout: .now() + timeout) == .timedOut {
-            timedOut = true
-            proc.terminate()
-            if finished.wait(timeout: .now() + 1) == .timedOut, proc.isRunning {
-                Darwin.kill(proc.processIdentifier, SIGKILL)
-                _ = finished.wait(timeout: .now() + 1)
+            return try await withThrowingTaskGroup(of: ProcessRunResult.self) { group in
+                group.addTask {
+                    var options = PlatformOptions()
+                    options.teardownSequence = [.gracefulShutDown(allowedDurationToNextStep: .seconds(1))]
+                    let result = try await Subprocess.run(
+                        .path(.init(path)),
+                        arguments: .init(arguments),
+                        platformOptions: options,
+                        output: .string(limit: 1_048_576),
+                        error: .string(limit: 1_048_576)
+                    )
+                    try Task.checkCancellation()
+                    let exitCode: Int32
+                    switch result.terminationStatus {
+                    case .exited(let code): exitCode = code
+                    case .signaled(let signal): exitCode = -signal
+                    }
+                    return ProcessRunResult(exitCode: exitCode,
+                                            stdout: result.standardOutput,
+                                            stderr: result.standardError,
+                                            timedOut: false)
+                }
+                group.addTask {
+                    try await Task.sleep(for: .seconds(timeout))
+                    throw Timeout()
+                }
+                defer { group.cancelAll() }
+                return try await group.next()!
             }
+        } catch {
+            try Task.checkCancellation()
+            let timedOut = error is Timeout
+            logger.error("Command failed \(path, privacy: .public): \(String(describing: error), privacy: .public)")
+            return ProcessRunResult(exitCode: -1, stdout: "",
+                                    stderr: timedOut ? "The command timed out." : error.localizedDescription,
+                                    timedOut: timedOut)
         }
-
-        _ = outputGroup.wait(timeout: .now() + 1)
-        let out = String(data: stdoutData.load(), encoding: .utf8) ?? ""
-        let err = String(data: stderrData.load(), encoding: .utf8) ?? ""
-        let result = ProcessRunResult(
-            exitCode: proc.isRunning ? -1 : proc.terminationStatus,
-            stdout: out,
-            stderr: err,
-            timedOut: timedOut
-        )
-
-        if timedOut {
-            logger.error("Timed out running \(path, privacy: .public) \(arguments.joined(separator: " "), privacy: .public)")
-        } else if result.exitCode != 0 {
-            logger.error("Command failed \(path, privacy: .public) exit=\(result.exitCode)")
-        }
-
-        return result
-    }
-
-    public static func capture(_ path: String,
-                               _ arguments: [String],
-                               timeout: TimeInterval = 10) -> String? {
-        let result = run(path, arguments, timeout: timeout)
-        return result.succeeded ? result.stdout : nil
-    }
-}
-
-private final class LockedData: @unchecked Sendable {
-    private let lock = NSLock()
-    private var value = Data()
-
-    func store(_ data: Data) {
-        lock.lock()
-        value = data
-        lock.unlock()
-    }
-
-    func load() -> Data {
-        lock.lock()
-        defer { lock.unlock() }
-        return value
     }
 }

@@ -1,5 +1,6 @@
 import XCTest
 
+@MainActor
 final class SharedLogicTests: XCTestCase {
 
     // MARK: PowerParsers.sleepDisabledValue
@@ -56,56 +57,58 @@ final class SharedLogicTests: XCTestCase {
         )
     }
 
-    func testPowerControllerReadsExplicitState() throws {
+    func testPowerControllerReadsExplicitState() async throws {
         let runner = StubProcessRunner([
             Self.result(stdout: "SleepDisabled 1\n")
         ])
 
-        XCTAssertTrue(try PowerController(runner: runner).isSleepPreventionEnabled())
+        let enabled = try await PowerController(runner: runner).isSleepPreventionEnabled()
+        XCTAssertTrue(enabled)
     }
 
-    func testPowerControllerRejectsUnreadableState() {
+    func testPowerControllerRejectsUnreadableState() async throws {
         let runner = StubProcessRunner([
             Self.result(stdout: "Currently in use:\n standby 1\n")
         ])
 
-        XCTAssertThrowsError(try PowerController(runner: runner).isSleepPreventionEnabled()) { error in
+        await assertThrows({ try await PowerController(runner: runner).isSleepPreventionEnabled() }) { error in
             guard case PowerControllerError.readFailed = error else {
                 return XCTFail("Expected readFailed, got \(error)")
             }
         }
     }
 
-    func testPowerControllerReportsReadCommandFailure() {
+    func testPowerControllerReportsReadCommandFailure() async throws {
         let runner = StubProcessRunner([
             Self.result(exitCode: 1, stderr: "pmset failed")
         ])
 
-        XCTAssertThrowsError(try PowerController(runner: runner).isSleepPreventionEnabled()) { error in
+        await assertThrows({ try await PowerController(runner: runner).isSleepPreventionEnabled() }) { error in
             XCTAssertEqual(error as? PowerControllerError, .readFailed("pmset failed"))
         }
     }
 
-    func testPowerControllerSetsAndVerifiesState() throws {
+    func testPowerControllerSetsAndVerifiesState() async throws {
         let runner = StubProcessRunner([
             Self.result(),
             Self.result(stdout: "SleepDisabled 1\n")
         ])
 
-        try PowerController(runner: runner).setSleepPrevention(true)
+        try await PowerController(runner: runner).setSleepPrevention(true)
         XCTAssertEqual(
             runner.invocations.map { $0.path },
             ["/usr/bin/osascript", "/usr/bin/pmset"]
         )
+        XCTAssertEqual(runner.invocations.map { $0.timeout }, [120, 5])
     }
 
-    func testPowerControllerRejectsStateMismatch() {
+    func testPowerControllerRejectsStateMismatch() async throws {
         let runner = StubProcessRunner([
             Self.result(),
             Self.result(stdout: "SleepDisabled 0\n")
         ])
 
-        XCTAssertThrowsError(try PowerController(runner: runner).setSleepPrevention(true)) { error in
+        await assertThrows({ try await PowerController(runner: runner).setSleepPrevention(true) }) { error in
             XCTAssertEqual(
                 error as? PowerControllerError,
                 .verificationFailed(target: true, actual: false)
@@ -113,55 +116,56 @@ final class SharedLogicTests: XCTestCase {
         }
     }
 
-    func testPowerControllerRejectsUnreadableVerification() {
+    func testPowerControllerRejectsUnreadableVerification() async throws {
         let runner = StubProcessRunner([
             Self.result(),
             Self.result(stdout: "Currently in use:\n standby 1\n")
         ])
 
-        XCTAssertThrowsError(try PowerController(runner: runner).setSleepPrevention(false)) { error in
+        await assertThrows({ try await PowerController(runner: runner).setSleepPrevention(false) }) { error in
             guard case PowerControllerError.readFailed = error else {
                 return XCTFail("Expected readFailed, got \(error)")
             }
         }
     }
 
-    func testPowerControllerReportsAuthorizationCancellation() {
+    func testPowerControllerReportsAuthorizationCancellation() async throws {
         let runner = StubProcessRunner([
             Self.result(exitCode: 1, stderr: "User canceled.")
         ])
 
-        XCTAssertThrowsError(try PowerController(runner: runner).setSleepPrevention(true)) { error in
+        await assertThrows({ try await PowerController(runner: runner).setSleepPrevention(true) }) { error in
             XCTAssertEqual(error as? PowerControllerError, .commandFailed("User canceled."))
         }
     }
 
-    func testPowerControllerReportsCommandTimeout() {
+    func testPowerControllerReportsCommandTimeout() async throws {
         let runner = StubProcessRunner([
             Self.result(exitCode: -1, timedOut: true)
         ])
 
-        XCTAssertThrowsError(try PowerController(runner: runner).setSleepPrevention(true)) { error in
+        await assertThrows({ try await PowerController(runner: runner).setSleepPrevention(true) }) { error in
             XCTAssertEqual(error as? PowerControllerError, .commandFailed("The command timed out."))
         }
     }
 
     // MARK: ProcessRunner
 
-    func testProcessRunnerCapturesStdout() {
-        let out = ProcessRunner.capture("/bin/echo", ["hello"])
+    func testProcessRunnerCapturesStdout() async throws {
+        let result = try await ProcessRunner.run("/bin/echo", ["hello"])
+        let out = result.stdout
         XCTAssertEqual(out, "hello\n")
     }
 
-    func testProcessRunnerReportsNonZeroExit() {
-        let result = ProcessRunner.run("/bin/sh", ["-c", "echo nope >&2; exit 7"])
+    func testProcessRunnerReportsNonZeroExit() async throws {
+        let result = try await ProcessRunner.run("/bin/sh", ["-c", "echo nope >&2; exit 7"])
         XCTAssertFalse(result.succeeded)
         XCTAssertEqual(result.exitCode, 7)
         XCTAssertTrue(result.stderr.contains("nope"))
     }
 
-    func testProcessRunnerTimesOut() {
-        let result = ProcessRunner.run("/bin/sh", ["-c", "sleep 2"], timeout: 0.1)
+    func testProcessRunnerTimesOut() async throws {
+        let result = try await ProcessRunner.run("/bin/sh", ["-c", "sleep 2"], timeout: 0.1)
         XCTAssertFalse(result.succeeded)
         XCTAssertTrue(result.timedOut)
     }
@@ -205,6 +209,16 @@ final class SharedLogicTests: XCTestCase {
 }
 
 private extension SharedLogicTests {
+    func assertThrows<T>(_ operation: () async throws -> T,
+                         check: (Error) -> Void) async {
+        do {
+            _ = try await operation()
+            XCTFail("Expected an error")
+        } catch {
+            check(error)
+        }
+    }
+
     static func result(
         exitCode: Int32 = 0,
         stdout: String = "",
@@ -239,7 +253,7 @@ private final class StubProcessRunner: ProcessRunning, @unchecked Sendable {
         lock.withLock { recordedInvocations }
     }
 
-    func run(_ path: String, _ arguments: [String], timeout: TimeInterval) -> ProcessRunResult {
+    func run(_ path: String, _ arguments: [String], timeout: TimeInterval) async throws -> ProcessRunResult {
         lock.withLock {
             recordedInvocations.append(Invocation(path: path, arguments: arguments, timeout: timeout))
             guard !results.isEmpty else {

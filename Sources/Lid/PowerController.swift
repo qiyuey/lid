@@ -1,12 +1,12 @@
 import Foundation
 
 protocol ProcessRunning: Sendable {
-    func run(_ path: String, _ arguments: [String], timeout: TimeInterval) -> ProcessRunResult
+    func run(_ path: String, _ arguments: [String], timeout: TimeInterval) async throws -> ProcessRunResult
 }
 
 struct SystemProcessRunner: ProcessRunning {
-    func run(_ path: String, _ arguments: [String], timeout: TimeInterval) -> ProcessRunResult {
-        ProcessRunner.run(path, arguments, timeout: timeout)
+    func run(_ path: String, _ arguments: [String], timeout: TimeInterval) async throws -> ProcessRunResult {
+        try await ProcessRunner.run(path, arguments, timeout: timeout)
     }
 }
 
@@ -34,8 +34,8 @@ struct PowerController: Sendable {
         self.runner = runner
     }
 
-    func isSleepPreventionEnabled() throws -> Bool {
-        let result = runner.run("/usr/bin/pmset", ["-g"], timeout: 5)
+    func isSleepPreventionEnabled() async throws -> Bool {
+        let result = try await runner.run("/usr/bin/pmset", ["-g"], timeout: 5)
         guard result.succeeded else {
             throw PowerControllerError.readFailed(Self.describe(result))
         }
@@ -45,8 +45,8 @@ struct PowerController: Sendable {
         return enabled
     }
 
-    func setSleepPrevention(_ enabled: Bool) throws {
-        let result = runner.run(
+    func setSleepPrevention(_ enabled: Bool) async throws {
+        let result = try await runner.run(
             "/usr/bin/osascript",
             ["-e", Self.adminScript(enabled: enabled)],
             timeout: 120
@@ -55,39 +55,15 @@ struct PowerController: Sendable {
             throw PowerControllerError.commandFailed(Self.describe(result))
         }
 
-        let actual = try isSleepPreventionEnabled()
+        let actual = try await isSleepPreventionEnabled()
         guard actual == enabled else {
             throw PowerControllerError.verificationFailed(target: enabled, actual: actual)
-        }
-    }
-
-    func isSleepPreventionEnabledAsync() async throws -> Bool {
-        try await runOffMain {
-            try isSleepPreventionEnabled()
-        }
-    }
-
-    func setSleepPreventionAsync(_ enabled: Bool) async throws {
-        try await runOffMain {
-            try setSleepPrevention(enabled)
         }
     }
 
     static func adminScript(enabled: Bool) -> String {
         let value = enabled ? "1" : "0"
         return "do shell script \"/usr/bin/pmset -a disablesleep \(value)\" with administrator privileges"
-    }
-
-    private func runOffMain<T: Sendable>(_ operation: @escaping @Sendable () throws -> T) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    continuation.resume(returning: try operation())
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
     }
 
     private static func describe(_ result: ProcessRunResult) -> String {

@@ -11,6 +11,9 @@ settings:
     CODE_SIGN_STYLE: Manual
 
 packages:
+  Subprocess:
+    url: https://github.com/swiftlang/swift-subprocess.git
+    exactVersion: 1.0.0
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: 2.9.4
@@ -54,10 +57,15 @@ targets:
         Release:
           PRODUCT_BUNDLE_IDENTIFIER: top.qiyuey.lid
     dependencies:
+      - package: Subprocess
+        product: Subprocess
       - package: Sparkle
         product: Sparkle
 
   LidTests:
+    dependencies:
+      - package: Subprocess
+        product: Subprocess
     type: bundle.unit-test
     platform: macOS
     sources:
