@@ -17,10 +17,10 @@ cask "lid" do
 
   app "Lid.app"
 
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args:         ["-dr", "com.apple.quarantine", "#{appdir}/Lid.app"],
-                   must_succeed: false
+  postflight_steps do
+    run "/usr/bin/xattr",
+        args:         ["-dr", "com.apple.quarantine", "{{appdir}}/Lid.app"],
+        must_succeed: false
   end
 
   uninstall quit: "top.qiyuey.lid"
