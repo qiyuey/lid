@@ -83,6 +83,17 @@ Lid 修改电源设置时，macOS 会要求管理员授权。选定状态会保�
 log stream --style compact --info --predicate 'subsystem == "top.qiyuey.lid"'
 ```
 
+通知诊断（使用自签名 Release 构建；仅测试通知，不改变睡眠设置）：
+
+```bash
+/Applications/Lid.app/Contents/MacOS/Lid --diagnose-notifications
+```
+
+首次运行可能请求通知权限，并发送一条明确标注的测试通知，随后清除它。
+输出区分授权状态、系统接受请求和通知中心实际记录；系统接受请求不代表横幅一定可见。
+通知被拒绝或发生错误时，状态不一致仍显示在菜单中，原因记录在
+`sleep-notification` 日志分类。诊断需要包含此命令的新构建。
+
 ## 移除
 
 先关闭 **合盖防睡眠**，退出 Lid，然后删除 `/Applications/Lid.app`。

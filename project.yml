@@ -73,6 +73,7 @@ targets:
       - Sources/Shared
       - Sources/Lid/Localization.swift
       - Sources/Lid/PowerController.swift
+      - Sources/Lid/SleepStateMismatchNotifier.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: top.qiyuey.lidTests

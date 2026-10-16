@@ -26,7 +26,6 @@ final class AppState: ObservableObject {
     private let loginItem = LoginItemManager()
     private let sleepStateMismatchNotifier = SleepStateMismatchNotifier()
     private lazy var onboarding = OnboardingController(state: self)
-    private let automaticRestoreRetryInterval: TimeInterval = 10 * 60
 
     /// Marketing version shown in the menu.
     var appVersion: String {
@@ -45,15 +44,14 @@ final class AppState: ObservableObject {
     private var stateChangeRequestID = 0
     private var stateReadGeneration = StateReadGeneration()
     @Published private var authorizationRetryTarget: Bool?
-    private var desiredSleepPreventionEnabled: Bool?
-    private var lastAutomaticRestoreAttempt: Date?
+    private var restorePolicy = SleepRestorePolicy()
     private var didBecomeActiveObserver: NSObjectProtocol?
     private var localeObserver: NSObjectProtocol?
 
     init() {
         languagePreference = AppLanguagePreference(rawValue: store.loadLanguagePreference()) ?? .system
         onboardingComplete = store.loadOnboardingComplete()
-        desiredSleepPreventionEnabled = store.loadDesiredSleepPreventionEnabled()
+        restorePolicy = SleepRestorePolicy(desired: store.loadDesiredSleepPreventionEnabled())
         launchAtLogin = loginItem.isEnabled
         refreshState()
         stateRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
@@ -159,6 +157,11 @@ final class AppState: ObservableObject {
     func setEnabled(_ target: Bool,
                     userInitiated: Bool = false,
                     completion: (@MainActor @Sendable (Bool) -> Void)? = nil) {
+        // Never overlap administrator commands; their side effects cannot be cancelled by a request ID.
+        guard !isChanging else {
+            completion?(false)
+            return
+        }
         let requestID = beginStateChange()
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -185,6 +188,7 @@ final class AppState: ObservableObject {
                 self.lastError = nil
                 self.authorizationRetryTarget = nil
                 self.rememberDesiredSleepPreventionState(target)
+                self.sleepStateMismatchNotifier.resolveMismatch()
                 self.finishStateChange(requestID)
                 completion?(true)
             } catch {
@@ -251,34 +255,25 @@ final class AppState: ObservableObject {
 
     private func applyObservedEnabledState(_ value: Bool) {
         isEnabled = value
-        if desiredSleepPreventionEnabled == nil {
+        if restorePolicy.desired == nil {
             rememberDesiredSleepPreventionState(value)
         }
-        if desiredSleepPreventionEnabled == value {
-            lastAutomaticRestoreAttempt = nil
+        if restorePolicy.desired == value {
+            restorePolicy.observe(value)
             authorizationRetryTarget = nil
             sleepStateMismatchNotifier.resolveMismatch()
         }
     }
 
     private func rememberDesiredSleepPreventionState(_ value: Bool) {
-        desiredSleepPreventionEnabled = value
+        restorePolicy.confirm(value)
         store.saveDesiredSleepPreventionEnabled(value)
     }
 
     private func restoreObservedStateIfNeeded(_ observed: Bool) {
-        guard let desired = desiredSleepPreventionEnabled else { return }
-        guard desired != observed else { return }
-        guard shouldAttemptAutomaticRestore() else { return }
-
-        lastAutomaticRestoreAttempt = Date()
+        guard let desired = restorePolicy.nextRestore(observed: observed, isChanging: isChanging, now: Date()) else { return }
         logger.info("Restoring SleepDisabled drift. desired=\(desired, privacy: .public) observed=\(observed, privacy: .public)")
         setEnabled(desired, userInitiated: false)
-    }
-
-    private func shouldAttemptAutomaticRestore(now: Date = Date()) -> Bool {
-        guard let lastAutomaticRestoreAttempt else { return true }
-        return now.timeIntervalSince(lastAutomaticRestoreAttempt) >= automaticRestoreRetryInterval
     }
 
     private func userMessage(for error: Error, target: Bool) -> String {

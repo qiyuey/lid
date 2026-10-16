@@ -96,6 +96,18 @@ To inspect live Lid logs:
 log stream --style compact --info --predicate 'subsystem == "top.qiyuey.lid"'
 ```
 
+Test notifications with a self-signed Release build (does not change sleep settings):
+
+```bash
+/Applications/Lid.app/Contents/MacOS/Lid --diagnose-notifications
+```
+
+This may request notification permission, sends a clearly labeled test notification,
+and removes it afterward. Output distinguishes authorization, request acceptance,
+and presence in Notification Center; acceptance does not guarantee a visible banner.
+Notification failures are logged under `sleep-notification`; the mismatch remains
+visible in the menu. This command requires a build containing the diagnostic.
+
 ## Remove
 
 Turn **Lid sleep prevention** off, quit Lid, then delete

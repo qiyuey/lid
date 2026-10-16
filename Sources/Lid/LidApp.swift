@@ -3,6 +3,20 @@ import Foundation
 import SwiftUI
 
 @main
+enum LidEntryPoint {
+    @MainActor
+    static func main() {
+        if CommandLine.arguments.contains("--diagnose-notifications") {
+            Task { @MainActor in
+                let code = await NotificationDiagnostic.run()
+                exit(code)
+            }
+            dispatchMain()
+        }
+        LidApp.main()
+    }
+}
+
 struct LidApp: App {
     @StateObject private var state: AppState
     @StateObject private var updater: UpdaterController
